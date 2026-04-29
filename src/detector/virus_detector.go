@@ -138,7 +138,7 @@ func (d *VirusDetector) isAnomalousByRule(stats packet.FlowStats, rule PortRule)
 		return true
 	}
 	if rule.MinDurationSec > 0 && stats.Duration.Seconds() > rule.MinDurationSec {
-		// слишком долго – тоже аномалия, но пока не используем
+
 	}
 	if rule.MaxRSTPerSYNRatio > 0 && stats.CntSYN > 0 {
 		ratio := float64(stats.CntRST) / float64(stats.CntSYN)
