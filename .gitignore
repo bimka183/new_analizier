@@ -1,5 +1,25 @@
+# Бинарники и временные файлы Go
+main
+main.exe
+*.exe
+*.db
+traffic.db
+bin/
+
+# IDE и настройки
+.idea/
+.vscode/
+*.swp
+
+# Зависимости и сборка React
+node_modules/
+build/
+.env
+
+# Сетевые дампы (чтобы случайно не залить гигабайты трафика)
 *.pcap
-/.idea*.db
+
+# Разное
+.qwen/
 *.bak
 *.orig
-.qwen/
