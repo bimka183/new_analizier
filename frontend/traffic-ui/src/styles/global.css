@@ -1,6 +1,6 @@
 
 
-@use "./vars.scss" as *;
+@import "./vars.scss";
 
 
 html, body {

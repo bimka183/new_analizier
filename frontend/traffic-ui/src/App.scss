@@ -2,6 +2,8 @@
 
 .app {
   padding: 20px;
+  min-height: 100vh;
+  background-color: var(--background-color);
   color: var(--text-color);
 
   h2 {
@@ -9,25 +11,14 @@
   }
 
   input,
-  select,
-  button {
+  select {
     margin-right: 10px;
     padding: 6px 10px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--control-border-color);
     border-radius: 4px;
     font-size: $font-size-medium;
-  }
-
-  button {
-    background-color: var(--button-color);
-    color: #fff;
-    border-color: var(--button-color);
-    cursor: pointer;
-
-    &:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
+    color: var(--text-color);
+    background-color: var(--background-color);
   }
 }
 
@@ -37,6 +28,8 @@
 
 .app__pagination {
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
 }
 
 .app__page-info {
@@ -51,7 +44,7 @@
 
   th,
   td {
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--control-border-color);
     padding: 8px;
     text-align: left;
   }
@@ -61,7 +54,7 @@
   }
 
   &__row--overload {
-    background-color: #ff944d;
+    background-color: var(--table-row-overload-color);
   }
 
   &__row--scan {
@@ -69,11 +62,11 @@
   }
 
   &__row--worm {
-    background-color: #ff6666;
+    background-color: var(--table-row-worm-color);
   }
 
   &__row--p2mp {
-    background-color: #66ccff;
+    background-color: var(--table-row-p2mp-color);
   }
 
   &__row--flow {
@@ -81,16 +74,16 @@
   }
 
   &__row--virus {
-    background-color: #cc0000;
-    color: #fff;
+    background-color: var(--table-row-virus-color);
+    color: var(--button-text-color);
   }
 
   &__row--none {
-    background-color: #e6ffed;
+    background-color: var(--table-row-none-color);
   }
 
   &__row--default {
-    background-color: #f0f0f0;
+    background-color: var(--table-row-default-color);
   }
 }
 
@@ -99,14 +92,17 @@
   gap: 40px;
   margin-top: 40px;
   flex-wrap: wrap;
+}
 
-  .app__chart-card {
-    width: 350px;
-    height: 250px;
+@media (max-width: $mobile-max) {
+  .app {
+    padding: 12px;
   }
 
-  .app__chart {
-    width: 100%;
-    height: 100%;
+  .app__controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 }
