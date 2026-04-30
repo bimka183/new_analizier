@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  LineChart, Line,
+  LineChart, Line, ResponsiveContainer,
 } from "recharts";
+import "./App.scss";
 
 function App() {
   const [data, setData] = useState([]);
@@ -22,37 +23,37 @@ function App() {
     return "None";
   };
 
-  const getRowStyle = (anomaly) => {
+  const getRowClassName = (anomaly) => {
     switch (anomaly) {
       case "DoS/DDoS Attack":
-        return { backgroundColor: "#ff4d4d" };
+        return "traffic-table__row--ddos";
 
       case "Network Overload":
-        return { backgroundColor: "#ff944d" };
+        return "traffic-table__row--overload";
 
       case "Network/Port Scanning":
-        return { backgroundColor: "#ffc107" };
+        return "traffic-table__row--scan";
 
       case "Worm Activity":
-        return { backgroundColor: "#ff6666" };
+        return "traffic-table__row--worm";
 
       case "Point-to-Multipoint":
-        return { backgroundColor: "#66ccff" };
+        return "traffic-table__row--p2mp";
 
       case "Flow Switching":
-        return { backgroundColor: "#c084fc" };
+        return "traffic-table__row--flow";
 
       case "Confirmed Virus Activity":
-        return { backgroundColor: "#cc0000", color: "white" };
+        return "traffic-table__row--virus";
 
       case "None":
       case "":
       case null:
       case undefined:
-        return { backgroundColor: "#e6ffed" };
+        return "traffic-table__row--none";
 
       default:
-        return { backgroundColor: "#f0f0f0" };
+        return "traffic-table__row--default";
     }
   };
 
@@ -174,17 +175,17 @@ function App() {
   console.log("RAW ITEM:", data[0]);
   console.log(anomaliesCount.length)
   return (
-    <div style={{ padding: "20px" }}>
+    <div className="app">
       <h2>Network Traffic</h2>
 
       {/* Upload */}
-      <div style={{ marginBottom: "20px" }}>
+      <div className="app__controls">
         <input type="file" onChange={(e) => setFile(e.target.files[0])} />
         <button onClick={handleUpload}>Upload PCAP</button>
       </div>
 
       {/* Filters */}
-      <div style={{ marginBottom: "20px" }}>
+      <div className="app__controls">
         <input
           placeholder="Filter by IP"
           value={filterIP}
@@ -208,11 +209,11 @@ function App() {
       </div>
 
       {/* Pagination */}
-      <div>
+      <div className="app__pagination">
         <button disabled={currentPage === 1}
           onClick={() => setCurrentPage(p => p - 1)}>Prev</button>
 
-        <span style={{ margin: "0 10px" }}>
+        <span className="app__page-info">
           {currentPage} / {totalPages || 1}
         </span>
 
@@ -221,7 +222,7 @@ function App() {
       </div>
 
       {/* Table */}
-      <table border="1" cellPadding="8" style={{ marginTop: "20px" }}>
+      <table className="traffic-table">
         <thead>
           <tr>
             <th>ID</th>
@@ -241,7 +242,7 @@ function App() {
           {paginatedData.map((item) => (
             <tr
               key={item.id}
-              style={getRowStyle(getAnomaly(item))}
+              className={getRowClassName(getAnomaly(item))}
             >
               <td>{item.id}</td>
               <td>{item.flow_id}</td>
@@ -259,34 +260,42 @@ function App() {
       </table>
 
       {/* Charts */}
-      <div style={{ display: "flex", gap: "40px", marginTop: "40px" }}>
+      <div className="app__charts">
+        <div className="app__chart-card">
+          <ResponsiveContainer className="app__chart">
+            <BarChart data={trafficByIP}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="source_ip" />
+              <YAxis tickFormatter={(v) => v.toLocaleString()} width={80} />
+              <Tooltip />
+              <Bar dataKey="volume" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
 
-        <BarChart width={350} height={250} data={trafficByIP}
-          margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="source_ip" />
-          <YAxis tickFormatter={(v) => v.toLocaleString()} width={80} />
-          <Tooltip />
-          <Bar dataKey="volume" />
-        </BarChart>
+        <div className="app__chart-card">
+          <ResponsiveContainer className="app__chart">
+            <BarChart data={anomaliesCount}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="anomaly_type" />
+              <YAxis tickFormatter={(v) => v.toLocaleString()} width={80} />
+              <Tooltip />
+              <Bar dataKey="count" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
 
-        <BarChart width={350} height={250} data={anomaliesCount}
-          margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="anomaly_type" />
-          <YAxis tickFormatter={(v) => v.toLocaleString()} width={80} />
-          <Tooltip />
-          <Bar dataKey="count" />
-        </BarChart>
-
-        <LineChart width={350} height={250} data={trafficByTime}
-          margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="time" />
-          <YAxis tickFormatter={(v) => v.toLocaleString()} width={80} />
-          <Tooltip />
-          <Line type="monotone" dataKey="volume" />
-        </LineChart>
+        <div className="app__chart-card">
+          <ResponsiveContainer className="app__chart">
+            <LineChart data={trafficByTime}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="time" />
+              <YAxis tickFormatter={(v) => v.toLocaleString()} width={80} />
+              <Tooltip />
+              <Line type="monotone" dataKey="volume" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
 
       </div>
     </div>
