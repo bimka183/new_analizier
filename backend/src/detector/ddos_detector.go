@@ -1,5 +1,6 @@
 package detector
 
+// D0A4D098D098D0A2D0BED0B2D186D18B20D0BCD0B0D0BAD0B0D0BAD0B8
 import (
 	"analizier/backend/src/packet"
 )
@@ -26,6 +27,10 @@ func (d *DDoSDetector) AnalyzeWindows(windows []packet.TimeWindow) []packet.Time
 		uniqueDstPortsAbs = 370
 		highAvgPorts      = 1000
 		windowCount       = 10
+		synThreshold      = 1000
+		synAckRatio       = 3.0
+		synHistoricRatio  = 3.0
+		synPerIPThreshold = 3.0
 	)
 
 	var anomalous []packet.TimeWindow
@@ -61,6 +66,39 @@ func (d *DDoSDetector) AnalyzeWindows(windows []packet.TimeWindow) []packet.Time
 			avg /= windowCount
 			if avg > highAvgPorts {
 				anomalous = append(anomalous, windowElement)
+				continue
+			}
+		}
+
+		// 4. SYN-flood
+		if stats.CntSYN > synThreshold {
+			ratio := float64(stats.CntSYN)
+			if stats.CntACK > 0 {
+				ratio /= float64(stats.CntSYN)
+			}
+
+			if ratio <= synAckRatio {
+				continue
+			}
+
+			synPerIP := 0.0
+			if stats.UniqueSrcIPs > 0 {
+				synPerIP = float64(stats.CntSYN) / float64(stats.UniqueSrcIPs)
+			}
+
+			avgSyn := 0.0
+			if i >= windowCount {
+				for j := i - windowCount; j < i; j++ {
+					avgSyn += float64(windows[j].Stats.CntSYN)
+				}
+				avgSyn /= float64(windowCount)
+			}
+
+			if (avgSyn > 0 && float64(stats.CntSYN) > avgSyn*synHistoricRatio) || (avgSyn == 0.0 && stats.CntSYN > synThreshold) {
+				if synPerIP > 0 && synPerIP < synPerIPThreshold {
+					anomalous = append(anomalous, windowElement)
+					continue
+				}
 			}
 		}
 	}
