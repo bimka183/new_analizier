@@ -1,0 +1,56 @@
+@use "../../styles/vars.scss" as *;
+
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--button-border-color);
+  border-radius: 4px;
+  background-color: var(--button-color);
+  color: var(--button-text-color);
+  font-size: $font-size-medium;
+  font-weight: $font-weight-semibold;
+  line-height: 1;
+  cursor: pointer;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-color);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &__icon {
+    display: inline-flex;
+    align-items: center;
+    width: 14px;
+    height: 14px;
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  }
+
+  &__label {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: $mobile-max) {
+  .ui-button {
+    padding: 6px 10px;
+    font-size: $font-size-small;
+  }
+}
