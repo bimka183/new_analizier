@@ -1,0 +1,86 @@
+@use "../styles/vars.scss" as *;
+
+// Override .traffic-table th padding from App.scss
+.traffic-table thead th.traffic-table__th--sortable {
+  padding: 0;
+  vertical-align: bottom;
+}
+
+.traffic-table__sort-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-weight: $font-weight-semibold;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--main-color) 10%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-color);
+    outline-offset: -2px;
+  }
+}
+
+.traffic-table__sort-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.traffic-table__sort-icons {
+  display: inline-flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 0;
+  line-height: 1;
+  font-size: 8px;
+  opacity: 0.45;
+}
+
+.traffic-table__sort-chevron {
+  display: block;
+
+  &.is-active {
+    opacity: 1;
+    color: var(--main-color);
+  }
+}
+
+.traffic-table__row--grouped {
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(0.97);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-color);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: $mobile-max) {
+  .traffic-table__sort-btn {
+    padding: 6px;
+    gap: 4px;
+  }
+
+  .traffic-table__sort-icons {
+    font-size: 7px;
+  }
+
+  .traffic-table__row--grouped {
+    cursor: pointer;
+  }
+}

@@ -167,6 +167,12 @@
   border-radius: 50%;
 }
 
+.threat-summary__source {
+  margin: 8px 0 0;
+  font-size: $font-size-small;
+  opacity: 0.8;
+}
+
 @media (max-width: $mobile-max) {
   .upload-section__row {
     grid-template-columns: 1fr;

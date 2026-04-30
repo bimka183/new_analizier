@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "../ui/charts";
 import Button from "../ui/button";
 import "./UploadSection.scss";
 
@@ -61,6 +61,7 @@ function UploadSection({
   uploadStatus,
   analysisSummary,
   threatSummary,
+  threatRowsCount,
   onChooseFile,
   onRemoveFile,
   onUpload,
@@ -185,11 +186,17 @@ function UploadSection({
                     style={{ backgroundColor: THREAT_COLORS[index % THREAT_COLORS.length] }}
                   />
                   <span>{item.name}</span>
-                  <strong>{item.value}</strong>
+                  <strong>
+                    {item.value}
+                    {totalThreats > 0 ? ` (${Math.round((item.value / totalThreats) * 100)}%)` : ""}
+                  </strong>
                 </li>
               ))}
             </ul>
           </div>
+          <p className="threat-summary__source">
+            Based on traffic table dataset: {threatRowsCount} rows
+          </p>
         </div>
       </div>
     </section>

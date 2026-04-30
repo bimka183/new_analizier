@@ -1,0 +1,29 @@
+@use "../styles/vars.scss" as *;
+
+.sessions-page {
+  border: 1px solid var(--control-border-color);
+  border-radius: 12px;
+  padding: 20px;
+  background-color: var(--background-color);
+  color: var(--text-color);
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: $font-size-xlarge;
+  }
+
+  p {
+    margin: 0;
+    font-size: $font-size-medium;
+  }
+
+  &__lead {
+    margin-bottom: 16px;
+    color: var(--text-color);
+    opacity: 0.85;
+  }
+
+  &__controls {
+    margin-top: 4px;
+  }
+}
