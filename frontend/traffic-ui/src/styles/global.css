@@ -1,0 +1,13 @@
+
+
+@use "./vars.scss" as *;
+
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    overflow-x: hidden;
+    background-color: var(--background-color);
+    color:var(--text-color);
+  }
