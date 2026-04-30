@@ -1,0 +1,97 @@
+@use "./styles/vars.scss" as *;
+
+.app {
+  padding: 20px;
+  min-height: 100vh;
+  background-color: var(--background-color);
+  color: var(--text-color);
+
+  h2 {
+    margin: 0 0 16px;
+  }
+
+  input,
+  select {
+    margin-right: 10px;
+    padding: 6px 10px;
+    border: 1px solid var(--control-border-color);
+    border-radius: 4px;
+    font-size: $font-size-medium;
+    color: var(--text-color);
+    background-color: var(--background-color);
+  }
+}
+
+.app__pagination {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.app__page-info {
+  margin: 0 10px;
+}
+
+.traffic-table {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: collapse;
+  font-size: $font-size-medium;
+
+  th,
+  td {
+    border: 1px solid var(--control-border-color);
+    padding: 8px;
+    text-align: left;
+  }
+
+  &__row--ddos {
+    background-color: $warning-color;
+  }
+
+  &__row--overload {
+    background-color: var(--table-row-overload-color);
+  }
+
+  &__row--scan {
+    background-color: $medium-warning-color;
+  }
+
+  &__row--worm {
+    background-color: var(--table-row-worm-color);
+  }
+
+  &__row--p2mp {
+    background-color: var(--table-row-p2mp-color);
+  }
+
+  &__row--flow {
+    background-color: $packet-color;
+  }
+
+  &__row--virus {
+    background-color: var(--table-row-virus-color);
+    color: var(--button-text-color);
+  }
+
+  &__row--none {
+    background-color: var(--table-row-none-color);
+  }
+
+  &__row--default {
+    background-color: var(--table-row-default-color);
+  }
+}
+
+.app__charts {
+  display: flex;
+  gap: 40px;
+  margin-top: 40px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: $mobile-max) {
+  .app {
+    padding: 12px;
+  }
+}

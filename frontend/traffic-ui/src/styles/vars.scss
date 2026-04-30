@@ -1,0 +1,54 @@
+$mobile-s: 375px;
+$mobile-mid: 425px;
+$mobile-max: 768px;
+$tablet-s: 769px;
+$desktop: 1366px;
+
+
+//Font sizes
+$font-size-xsmall: 10px;
+$font-size-small: 12px;
+$font-size-medium: 14px;
+$font-size-large: 16px;
+$font-size-xlarge: 20px;
+
+$font-weight-light: 200;
+$font-weight-regular: 400;
+$font-weight-semibold: 600;
+$font-weight-bold: 800;
+$medium-warning-color: #e8a11c;
+$warning-color: #f74e48;
+$flow-color: #4cd494;
+$packet-color: #ae74d4;
+
+:root {
+  --background-color: #ffffff;
+  --text-color: #0e1826;
+  --main-color: #255ccc;
+  --button-color: #245dd1;
+  --button-border-color: #245dd1;
+  --button-text-color: #ffffff;
+  --control-border-color: #d0d7de;
+  --table-row-overload-color: #ff944d;
+  --table-row-worm-color: #ff6666;
+  --table-row-p2mp-color: #66ccff;
+  --table-row-virus-color: #cc0000;
+  --table-row-none-color: #e6ffed;
+  --table-row-default-color: #f0f0f0;
+}
+
+[data-theme="dark"] {
+  --background-color: #0e1826;
+  --text-color: #ffffff;
+  --main-color: #255ccc;
+  --button-color: #245dd1;
+  --button-border-color: #245dd1;
+  --button-text-color: #ffffff;
+  --control-border-color: #4d6482;
+  --table-row-overload-color: #ff944d;
+  --table-row-worm-color: #ff6666;
+  --table-row-p2mp-color: #66ccff;
+  --table-row-virus-color: #cc0000;
+  --table-row-none-color: #e6ffed;
+  --table-row-default-color: #f0f0f0;
+}
