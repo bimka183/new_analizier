@@ -21,6 +21,8 @@ WORKDIR /app
 COPY --from=builder /app/server .
 RUN mkdir -p /app/files
 
+COPY backend/app/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 EXPOSE 8080
 
 CMD ["./server"]

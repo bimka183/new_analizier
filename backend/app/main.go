@@ -219,7 +219,7 @@ func (a *App) runBroadcast() {
 // ------------------------------------------------------------
 
 func main() {
-	db, err := gorm.Open(sqlite.Open("traffic.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("/app/traffic.db"), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}

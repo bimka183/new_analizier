@@ -5,9 +5,6 @@ services:
       dockerfile: backend/app/Dockerfile
     ports:
       - "8080:8080"
-    volumes:
-      - ./files:/app/files
-      - ./traffic.db:/app/traffic.db
     environment:
       - GIN_MODE=release
 
