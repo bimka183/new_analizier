@@ -16,15 +16,15 @@ type TrafficRepository interface {
 	WriteFlowAnomaly() error
 }
 
-type sqliteTrafficRepo struct {
+type postgresTrafficRepo struct {
 	db *gorm.DB
 }
 
-func NewSqliteTrafficRepo(db *gorm.DB) TrafficRepository {
-	return &sqliteTrafficRepo{db: db}
+func NewPostgresTrafficRepo(db *gorm.DB) TrafficRepository {
+	return &postgresTrafficRepo{db: db}
 }
 
-func (r *sqliteTrafficRepo) Create(traffic *models.Traffic) error {
+func (r *postgresTrafficRepo) Create(traffic *models.Traffic) error {
 
 	tx := r.db.Create(traffic)
 	if tx.Error != nil {
@@ -33,7 +33,7 @@ func (r *sqliteTrafficRepo) Create(traffic *models.Traffic) error {
 	return nil
 }
 
-func (r *sqliteTrafficRepo) CreateBulk(traffics []*models.Traffic) error {
+func (r *postgresTrafficRepo) CreateBulk(traffics []*models.Traffic) error {
 	tx := r.db.Create(traffics)
 	if tx.Error != nil {
 		return tx.Error
@@ -41,7 +41,7 @@ func (r *sqliteTrafficRepo) CreateBulk(traffics []*models.Traffic) error {
 	return nil
 }
 
-func (r *sqliteTrafficRepo) GetTraffic(limit int, offset int) ([]models.Traffic, error) {
+func (r *postgresTrafficRepo) GetTraffic(limit int, offset int) ([]models.Traffic, error) {
 	var traffic []models.Traffic
 	tx := r.db.Model(&models.Traffic{}).
 		Select("*").
@@ -55,7 +55,7 @@ func (r *sqliteTrafficRepo) GetTraffic(limit int, offset int) ([]models.Traffic,
 	return traffic, nil
 }
 
-func (r *sqliteTrafficRepo) GetTrafficWithFilter(limit int, offset int, sourceIP string) ([]models.Traffic, error) {
+func (r *postgresTrafficRepo) GetTrafficWithFilter(limit int, offset int, sourceIP string) ([]models.Traffic, error) {
 	var traffic []models.Traffic
 	query := r.db.Model(&models.Traffic{}).
 		Preload("Anomalies")
@@ -71,11 +71,11 @@ func (r *sqliteTrafficRepo) GetTrafficWithFilter(limit int, offset int, sourceIP
 	return traffic, nil
 }
 
-func (r *sqliteTrafficRepo) WriteFlowAnomaly() error {
+func (r *postgresTrafficRepo) WriteFlowAnomaly() error {
 	return fmt.Errorf("not implemented")
 }
 
-func (r *sqliteTrafficRepo) CountTraffic(sourceIP string) (int64, error) {
+func (r *postgresTrafficRepo) CountTraffic(sourceIP string) (int64, error) {
 	var count int64
 	query := r.db.Model(&models.Traffic{})
 	if sourceIP != "" {

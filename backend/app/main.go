@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -42,7 +43,7 @@ func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
 	router.MaxMultipartMemory = 10 << 20
 
-	repo := repository.NewSqliteTrafficRepo(db)
+	repo := repository.NewPostgresTrafficRepo(db)
 
 	// Инициализация детекторов
 	_, internalNet, _ := net.ParseCIDR("59.166.0.0/16")
@@ -219,7 +220,11 @@ func (a *App) runBroadcast() {
 // ------------------------------------------------------------
 
 func main() {
-	db, err := gorm.Open(sqlite.Open("traffic.db"), &gorm.Config{})
+	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		dsn = "host=localhost user=postgres password=postgres dbname=traffic port=5432 sslmode=disable TimeZone=UTC"
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
