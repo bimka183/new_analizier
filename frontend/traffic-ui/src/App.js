@@ -1,11 +1,24 @@
-import React, { useEffect, useState, useCallback } from "react";
-import UploadControls from "./components/UploadControls";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import UploadSection from "./components/UploadSection";
 import TrafficFilters from "./components/TrafficFilters";
 import TrafficPagination from "./components/TrafficPagination";
 import TrafficTable from "./components/TrafficTable";
 import TrafficCharts from "./components/TrafficCharts";
 import { getAnomaly } from "./utils/traffic";
 import "./App.scss";
+
+const EMPTY_ANALYSIS_SUMMARY = {
+  packets: 0,
+  flows: 0,
+  startTime: "-",
+  duration: "-",
+};
+
+const EMPTY_THREAT_SUMMARY = [
+  { name: "DDoS", value: 0 },
+  { name: "Port Scan", value: 0 },
+  { name: "Worm Activity", value: 0 },
+];
 
 function App() {
   const [data, setData] = useState([]);
@@ -14,22 +27,66 @@ function App() {
   const [filterAnomaly, setFilterAnomaly] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [file, setFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState("idle");
+  const [analysisSummary, setAnalysisSummary] = useState(EMPTY_ANALYSIS_SUMMARY);
+  const [threatSummary, setThreatSummary] = useState(EMPTY_THREAT_SUMMARY);
+  const [isReportAvailable, setIsReportAvailable] = useState(false);
+  const analysisTimeoutsRef = useRef([]);
 
   const itemsPerPage = 20;
 
-  const handleUpload = async () => {
+  const clearAnalysisTimers = useCallback(() => {
+    analysisTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    analysisTimeoutsRef.current = [];
+  }, []);
+
+  const handleChooseFile = useCallback(
+    (nextFile) => {
+      setFile(nextFile);
+      setUploadStatus("idle");
+      setAnalysisSummary(EMPTY_ANALYSIS_SUMMARY);
+      setThreatSummary(EMPTY_THREAT_SUMMARY);
+      setIsReportAvailable(false);
+      clearAnalysisTimers();
+    },
+    [clearAnalysisTimers]
+  );
+
+  const handleRemoveFile = useCallback(() => {
+    handleChooseFile(null);
+  }, [handleChooseFile]);
+
+  const handleUpload = useCallback(() => {
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append("file", file);
+    clearAnalysisTimers();
+    setUploadStatus("uploading");
+    setIsReportAvailable(false);
 
-    await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+    const startedAt = new Date();
+    const processingTimer = window.setTimeout(() => {
+      setUploadStatus("processing");
+    }, 1200);
 
-    fetchData();
-  };
+    // Hook-point for real polling/websocket updates.
+    const completedTimer = window.setTimeout(() => {
+      setUploadStatus("completed");
+      setAnalysisSummary({
+        packets: 7421,
+        flows: 312,
+        startTime: startedAt.toLocaleTimeString(),
+        duration: "00:01:18",
+      });
+      setThreatSummary([
+        { name: "DDoS", value: 14 },
+        { name: "Port Scan", value: 9 },
+        { name: "Worm Activity", value: 4 },
+      ]);
+      setIsReportAvailable(true);
+    }, 2800);
+
+    analysisTimeoutsRef.current = [processingTimer, completedTimer];
+  }, [clearAnalysisTimers, file]);
 
   const fetchData = useCallback(() => {
     let url = `/api/traffic?page=${currentPage}&limit=${itemsPerPage}`;
@@ -49,6 +106,12 @@ function App() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      clearAnalysisTimers();
+    };
+  }, [clearAnalysisTimers]);
 
   useEffect(() => {
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -133,7 +196,16 @@ function App() {
     <div className="app">
       <h2>Network Traffic</h2>
 
-      <UploadControls setFile={setFile} onUpload={handleUpload} />
+      <UploadSection
+        file={file}
+        uploadStatus={uploadStatus}
+        analysisSummary={analysisSummary}
+        threatSummary={threatSummary}
+        onChooseFile={handleChooseFile}
+        onRemoveFile={handleRemoveFile}
+        onUpload={handleUpload}
+        isReportAvailable={isReportAvailable}
+      />
       <TrafficFilters
         filterIP={filterIP}
         filterAnomaly={filterAnomaly}

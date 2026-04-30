@@ -22,10 +22,6 @@
   }
 }
 
-.app__controls {
-  margin-bottom: 20px;
-}
-
 .app__pagination {
   margin-bottom: 12px;
   display: flex;
@@ -97,12 +93,5 @@
 @media (max-width: $mobile-max) {
   .app {
     padding: 12px;
-  }
-
-  .app__controls {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
   }
 }
