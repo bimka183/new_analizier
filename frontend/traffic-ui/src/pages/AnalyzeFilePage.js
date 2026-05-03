@@ -3,6 +3,7 @@ import UploadSection from "../components/UploadSection";
 import TrafficCharts from "../components/TrafficCharts";
 import TrafficPagination from "../components/TrafficPagination";
 import TrafficTable from "../components/TrafficTable";
+import SectionContainer from "../ui/section-container";
 import { useTrafficDashboardView } from "../hooks/useTrafficDashboardView";
 import { createMockTrafficRowsFromFile } from "../utils/mockFileAnalysis";
 import "./AnalyzeFilePage.scss";
@@ -112,17 +113,19 @@ function AnalyzeFilePage() {
         selected file).
       </p>
 
-      <UploadSection
-        file={file}
-        uploadStatus={uploadStatus}
-        analysisSummary={analysisSummary}
-        threatSummary={threatSummary}
-        threatRowsCount={filteredChartData.length}
-        onChooseFile={handleChooseFile}
-        onRemoveFile={handleRemoveFile}
-        onUpload={handleUpload}
-        isReportAvailable={isReportAvailable}
-      />
+      <SectionContainer as="section" className="analyze-file-page__upload-shell">
+        <UploadSection
+          file={file}
+          uploadStatus={uploadStatus}
+          analysisSummary={analysisSummary}
+          threatSummary={threatSummary}
+          threatRowsCount={filteredChartData.length}
+          onChooseFile={handleChooseFile}
+          onRemoveFile={handleRemoveFile}
+          onUpload={handleUpload}
+          isReportAvailable={isReportAvailable}
+        />
+      </SectionContainer>
 
       {fileRows.length > 0 ? (
         <>

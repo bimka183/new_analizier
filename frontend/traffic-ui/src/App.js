@@ -4,6 +4,8 @@ import TrafficPagination from "./components/TrafficPagination";
 import TrafficTable from "./components/TrafficTable";
 import TrafficCharts from "./components/TrafficCharts";
 import DashboardThreatPanel from "./components/DashboardThreatPanel";
+import TotalFlowsCard from "./ui/total-flows-card";
+import SectionContainer from "./ui/section-container";
 import ThemeToggle from "./ui/theme-toggle/ThemeToggle";
 import Sidebar from "./ui/sidebar/Sidebar";
 import SessionsPage from "./pages/SessionsPage";
@@ -68,10 +70,19 @@ function App() {
               path="/dashboard"
               element={
                 <>
-                  <DashboardThreatPanel
-                    threatSummary={threatSummary}
-                    threatRowsCount={filteredChartData.length}
-                  />
+                  <SectionContainer as="section" className="app__dashboard-overview">
+                    <DashboardThreatPanel
+                      threatSummary={threatSummary}
+                      threatRowsCount={filteredChartData.length}
+                    />
+                  </SectionContainer>
+                  <div className="app__metrics" aria-label="Dashboard metrics">
+                    <TotalFlowsCard
+                      trafficRows={allData}
+                      trendLabel="n/a"
+                      trendDirection="neutral"
+                    />
+                  </div>
                   <TrafficCharts
                     trafficByIP={trafficByIP}
                     anomaliesCount={anomaliesCount}

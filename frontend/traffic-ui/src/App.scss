@@ -44,6 +44,26 @@
 .app__controls {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--control-border-color);
+  border-radius: 12px;
+  padding: 14px;
+  background-color: var(--background-color-secondary);
+}
+
+.app__dashboard-overview {
+  margin-bottom: 24px;
+}
+
+.app__metrics {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.app__metrics > * {
+  flex: 0 1 360px;
+  min-width: 280px;
 }
 
 .app__traffic-section {
@@ -269,4 +289,14 @@
     flex-basis: 100%;
     min-width: 0;
   }
+
+  .app__metrics {
+    margin-bottom: 12px;
+  }
+
+  .app__metrics > * {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
 }

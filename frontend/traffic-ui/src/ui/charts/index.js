@@ -3,6 +3,8 @@
  * directly, so versions and surface area stay centralized.
  */
 export {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,

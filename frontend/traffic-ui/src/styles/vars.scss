@@ -23,6 +23,7 @@ $packet-color: #ae74d4;
 
 :root {
   --background-color: #ffffff;
+  --background-color-secondary: #f5f7fb;
   --text-color: #0e1826;
   --main-color: #255ccc;
   --button-color: #245dd1;
@@ -52,7 +53,8 @@ $packet-color: #ae74d4;
 }
 
 [data-theme="dark"] {
-  --background-color: #0e1826;
+  --background-color: #030a17;
+  --background-color-secondary: #0e1826;
   --text-color: #ffffff;
   --main-color: #255ccc;
   --button-color: #245dd1;
@@ -66,7 +68,7 @@ $packet-color: #ae74d4;
   --table-row-none-color: #e6ffed;
   --table-row-default-color: #f0f0f0;
   --chart-grid-color: #4d6482;
-  --chart-tooltip-background: #0e1826;
+  --chart-tooltip-background: #030a17;
   --chart-tooltip-text-color: #66ccff;
   --chart-line-color: #66ccff;
   --chart-bar-default: #66ccff;
