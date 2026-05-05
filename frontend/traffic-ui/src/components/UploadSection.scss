@@ -1,9 +1,5 @@
 @use "../styles/vars.scss" as *;
 
-.upload-section {
-  margin-bottom: 20px;
-}
-
 .upload-section__row {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1.1fr;
@@ -14,7 +10,7 @@
   border: 1px solid var(--control-border-color);
   border-radius: 10px;
   padding: 14px;
-  background-color: var(--background-color);
+  background-color: var(--background-color-secondary);
 }
 
 .upload-panel__title {
@@ -165,6 +161,12 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
+}
+
+.threat-summary__source {
+  margin: 8px 0 0;
+  font-size: $font-size-small;
+  opacity: 0.8;
 }
 
 @media (max-width: $mobile-max) {

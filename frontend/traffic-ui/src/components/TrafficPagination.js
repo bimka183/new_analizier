@@ -1,5 +1,6 @@
 import React from "react";
 import Button from "../ui/button";
+import { PAGE_SIZE_OPTIONS } from "../constants/trafficApp";
 
 function PrevIcon() {
   return (
@@ -17,25 +18,72 @@ function NextIcon() {
   );
 }
 
-function TrafficPagination({ currentPage, totalPages, onPrev, onNext }) {
+function TrafficPagination({
+  currentPage,
+  totalPages,
+  totalRows = 0,
+  itemsPerPage,
+  onItemsPerPageChange,
+  onPrev,
+  onNext,
+}) {
+  const safeTotalPages = Math.max(1, totalPages);
+  const start =
+    totalRows === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const end =
+    totalRows === 0
+      ? 0
+      : Math.min(currentPage * itemsPerPage, totalRows);
+
+  const rangeLabel =
+    totalRows === 0
+      ? "Нет строк для отображения"
+      : `Отображаются строки с ${start} по ${end} из ${totalRows}`;
+
+  const pageSizeId = "traffic-pagination-page-size";
+
   return (
     <div className="app__pagination">
-      <Button disabled={currentPage === 1} onClick={onPrev} icon={<PrevIcon />}>
-        Prev
-      </Button>
+      <div className="app__pagination-lead">
+        <span className="app__pagination-range">{rangeLabel}</span>
+      </div>
+      <div className="app__pagination-controls">
+        <Button disabled={currentPage === 1} onClick={onPrev} icon={<PrevIcon />}>
+          Prev
+        </Button>
 
-      <span className="app__page-info">
-        {currentPage} / {totalPages}
-      </span>
+        <span className="app__page-info">
+          {currentPage} / {safeTotalPages}
+        </span>
 
-      <Button
-        disabled={currentPage >= totalPages}
-        onClick={onNext}
-        icon={<NextIcon />}
-        iconPosition="right"
-      >
-        Next
-      </Button>
+        <Button
+          disabled={currentPage >= safeTotalPages}
+          onClick={onNext}
+          icon={<NextIcon />}
+          iconPosition="right"
+        >
+          Next
+        </Button>
+      </div>
+      <div className="app__pagination-tail">
+        <div className="app__pagination-page-size">
+          <label htmlFor={pageSizeId}>Rows per page</label>
+          <select
+            id={pageSizeId}
+            aria-label="Rows per page"
+            value={itemsPerPage}
+            onChange={(event) =>
+              onItemsPerPageChange(Number(event.target.value))
+            }
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,17 @@
+@use "../../styles/vars.scss" as *;
+
+.section-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background-color: var(--background-color-secondary);
+}
+
+@media (max-width: $mobile-max) {
+  .section-container {
+    gap: 12px;
+    padding: 12px;
+  }
+}

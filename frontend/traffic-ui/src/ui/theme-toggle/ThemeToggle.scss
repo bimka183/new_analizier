@@ -1,0 +1,27 @@
+@use "../../styles/vars.scss" as *;
+
+.theme-toggle {
+  background-color: transparent;
+  color: var(--text-color);
+  border-color: var(--control-border-color);
+  min-width: 140px;
+}
+
+.theme-toggle__icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(13%) sepia(16%) saturate(1250%)
+    hue-rotate(176deg) brightness(92%) contrast(96%);
+}
+
+[data-theme="dark"] .theme-toggle__icon {
+  filter: brightness(0) saturate(100%) invert(100%);
+}
+
+@media (max-width: $mobile-max) {
+  .theme-toggle {
+    min-width: auto;
+  }
+}

@@ -1,0 +1,92 @@
+@use "../../styles/vars.scss" as *;
+
+.total-flows-card {
+  border: 1px solid var(--control-border-color);
+  border-radius: 12px;
+  background-color: var(--background-color-secondary);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.total-flows-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.total-flows-card__title {
+  margin: 0;
+  font-size: $font-size-xlarge;
+  font-weight: $font-weight-semibold;
+  color: var(--main-color);
+}
+
+.total-flows-card__icon {
+  width: 20px;
+  height: 20px;
+  color: var(--main-color);
+
+  svg {
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+}
+
+.total-flows-card__value {
+  font-size: 17px;
+  line-height: 1;
+  font-weight: $font-weight-bold;
+  color: var(--text-color);
+}
+
+.total-flows-card__footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.total-flows-card__trend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.total-flows-card__trend-value {
+  font-size: $font-size-medium;
+  font-weight: $font-weight-semibold;
+  color: var(--main-color);
+}
+
+.total-flows-card__trend-context {
+  font-size: $font-size-small;
+  font-weight: $font-weight-regular;
+  color: var(--text-color);
+  opacity: 0.72;
+}
+
+.total-flows-card__sparkline {
+  width: 132px;
+  height: 58px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+@media (max-width: $mobile-max) {
+  .total-flows-card {
+    padding: 12px;
+  }
+
+  .total-flows-card__value {
+    font-size: 14px;
+  }
+
+  .total-flows-card__sparkline {
+    width: 112px;
+    height: 50px;
+  }
+}
