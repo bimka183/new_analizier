@@ -10,7 +10,9 @@ export function useTrafficDataset() {
       `${apiBaseRef.current}/api/traffic?page=1&limit=10000`
     );
     const result = await response.json();
-    setAllData(result.data || []);
+    const rows = result.data || [];
+    setAllData(rows);
+    return rows;
   }, []);
 
   useEffect(() => {

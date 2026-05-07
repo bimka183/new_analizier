@@ -4,23 +4,27 @@ import TrafficCharts from "../components/TrafficCharts";
 import TrafficPagination from "../components/TrafficPagination";
 import TrafficTable from "../components/TrafficTable";
 import SectionContainer from "../ui/section-container";
+import { usePcapUpload } from "../hooks/usePcapUpload";
+import { useTrafficDataset } from "../hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "../hooks/useTrafficDashboardView";
-import { createMockTrafficRowsFromFile } from "../utils/mockFileAnalysis";
 import "./AnalyzeFilePage.scss";
 
-const EMPTY_SUMMARY = {
-  packets: 0,
-  flows: 0,
-  startTime: "—",
-  duration: "—",
-};
-
 function AnalyzeFilePage() {
-  const [file, setFile] = React.useState(null);
-  const [uploadStatus, setUploadStatus] = React.useState("idle");
-  const [analysisSummary, setAnalysisSummary] = React.useState(EMPTY_SUMMARY);
-  const [isReportAvailable, setIsReportAvailable] = React.useState(false);
+  const { apiBaseRef, fetchAllData } = useTrafficDataset();
   const [fileRows, setFileRows] = React.useState([]);
+  const {
+    file,
+    uploadStatus,
+    analysisSummary,
+    isReportAvailable,
+    handleChooseFile: choosePcapFile,
+    handleRemoveFile: removePcapFile,
+    handleUpload: uploadPcapFile,
+  } = usePcapUpload({
+    apiBaseRef,
+    fetchAllData,
+    onUploadSuccess: setFileRows,
+  });
 
   const {
     sortColumn,
@@ -40,69 +44,19 @@ function AnalyzeFilePage() {
     threatSummary,
   } = useTrafficDashboardView(fileRows, { tableBaseOrder: "chronological" });
 
-  const timersRef = React.useRef([]);
-
-  React.useEffect(
-    () => () => {
-      timersRef.current.forEach((timerId) => clearTimeout(timerId));
-      timersRef.current = [];
-    },
-    []
-  );
-
-  const clearPendingTimers = () => {
-    timersRef.current.forEach((timerId) => clearTimeout(timerId));
-    timersRef.current = [];
-  };
-
   const handleChooseFile = (nextFile) => {
-    clearPendingTimers();
-    setFile(nextFile);
-    setUploadStatus("idle");
-    setIsReportAvailable(false);
     setFileRows([]);
-    setAnalysisSummary(EMPTY_SUMMARY);
+    choosePcapFile(nextFile);
   };
 
   const handleRemoveFile = () => {
-    clearPendingTimers();
-    setFile(null);
-    setUploadStatus("idle");
-    setIsReportAvailable(false);
     setFileRows([]);
-    setAnalysisSummary(EMPTY_SUMMARY);
+    removePcapFile();
   };
 
-  const handleUpload = () => {
-    if (!file) return;
-
-    clearPendingTimers();
-    setUploadStatus("uploading");
-    setIsReportAvailable(false);
+  const handleUpload = async () => {
     setFileRows([]);
-    setAnalysisSummary(EMPTY_SUMMARY);
-
-    const mockRows = createMockTrafficRowsFromFile(file);
-    const uniqueFlows = new Set(mockRows.map((item) => item.flow_id)).size;
-    const startedAt = mockRows[0]?.timestamp || "—";
-
-    const processingTimer = setTimeout(() => {
-      setUploadStatus("processing");
-    }, 450);
-
-    const completionTimer = setTimeout(() => {
-      setFileRows(mockRows);
-      setAnalysisSummary({
-        packets: mockRows.length,
-        flows: uniqueFlows,
-        startTime: startedAt,
-        duration: `${Math.max(1, Math.ceil(mockRows.length / 5))} min`,
-      });
-      setUploadStatus("completed");
-      setIsReportAvailable(true);
-    }, 1200);
-
-    timersRef.current = [processingTimer, completionTimer];
+    await uploadPcapFile();
   };
 
   return (

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { EMPTY_ANALYSIS_SUMMARY } from "../constants/trafficApp";
 
-export function usePcapUpload({ apiBaseRef, fetchAllData }) {
+export function usePcapUpload({ apiBaseRef, fetchAllData, onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState("idle");
   const [analysisSummary, setAnalysisSummary] = useState(EMPTY_ANALYSIS_SUMMARY);
@@ -58,11 +58,13 @@ export function usePcapUpload({ apiBaseRef, fetchAllData }) {
       }
 
       setUploadStatus("processing");
-      await fetchAllData();
+      const uploadedRows = await fetchAllData();
+      onUploadSuccess?.(uploadedRows || []);
       await fetchAnalysisSummary(startedAt);
       setUploadStatus("completed");
     } catch (error) {
       setUploadStatus("error");
+      onUploadSuccess?.([]);
       setAnalysisSummary({
         ...EMPTY_ANALYSIS_SUMMARY,
         startTime: startedAt.toLocaleTimeString(),
@@ -71,7 +73,7 @@ export function usePcapUpload({ apiBaseRef, fetchAllData }) {
       // eslint-disable-next-line no-console
       console.error("PCAP upload failed", error);
     }
-  }, [apiBaseRef, fetchAllData, fetchAnalysisSummary, file]);
+  }, [apiBaseRef, fetchAllData, fetchAnalysisSummary, file, onUploadSuccess]);
 
   return {
     file,
