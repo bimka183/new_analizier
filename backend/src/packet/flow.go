@@ -14,6 +14,7 @@ type FlowInfo struct {
 	SourceIP      string
 	DestinationIP string
 	IPVersion     string
+	Protocol      string
 	SourcePort    string
 	DestPort      string
 	Length        int

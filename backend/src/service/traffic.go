@@ -13,17 +13,25 @@ import (
 
 func MapFlowToTraffic(flow *pkt.FlowInfo) models.Traffic {
 	return models.Traffic{
-		FlowID:          flow.FlowID,
-		Interface:       flow.Interface,
-		Timestamp:       flow.StartTime.Format("2006-01-02 15:04:05"),
-		TrafficVolume:   flow.TrafficVolume,
-		SourceIP:        flow.SourceIP,
-		DestinationIP:   flow.DestinationIP,
-		SourcePort:      flow.SourcePort,
-		DestinationPort: flow.DestPort,
-		IPVersion:       flow.IPVersion,
-		Length:          flow.Length,
-		Flags:           strings.Join(flow.Statuses, ","),
+		FlowID:           flow.FlowID,
+		Interface:        flow.Interface,
+		Timestamp:        flow.StartTime.Format("2006-01-02 15:04:05"),
+		TrafficVolume:    flow.TrafficVolume,
+		SourceIP:         flow.SourceIP,
+		DestinationIP:    flow.DestinationIP,
+		SourcePort:       flow.SourcePort,
+		DestinationPort:  flow.DestPort,
+		IPVersion:        flow.IPVersion,
+		Protocol:         flow.Protocol,
+		Length:           flow.Length,
+		Flags:            strings.Join(flow.Statuses, ","),
+		// FlowStats
+		Packets:          flow.Stats.CntPackets,
+		AvgPacketSize:    flow.Stats.AvgPacketSize,
+		StdDevPacketSize: flow.Stats.StdDevPacketSize,
+		BPS:              flow.Stats.BPS,
+		IATms:            float64(flow.Stats.IAT.Milliseconds()),
+		DurationSec:      flow.Stats.Duration.Seconds(),
 	}
 }
 
@@ -39,6 +47,7 @@ func divideByFlow(packets []pkt.PacketInfo) map[string]*pkt.FlowInfo {
 				SourceIP:      packet.SrcIP,
 				DestinationIP: packet.DstIP,
 				IPVersion:     packet.IPVersion,
+				Protocol:      packet.Protocol,
 				SourcePort:    packet.SrcPort,
 				DestPort:      packet.DstPort,
 				Statuses:      make([]string, 0),
@@ -85,15 +94,9 @@ func NewTrafficService(
 	}
 }
 
-// приходит файл
-// парсим файл на PacketInfo
-// Разделяем PacketInfo на FlowInfo
-// Тут можно записать FlowInfo в БД
-// Собираем FlowStats по FlowInfo
-// Пропускаем FlowStats через детекторы и получаем DetectionResult
-// Если DetectionResult.IsAnomaly добавляем DetectionResult.Type.String() в список аномалий
-// Записываем аномалии для каждого FlowInfo в таблицу единым запросом
-func (s *TrafficService) Pipeline(filename string) error {
+// analyzeFile выполняет парсинг и анализ файла, возвращает список моделей Traffic.
+// Общий код для Pipeline и PipelineAnalyzeOnly.
+func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 	parser := prs.NewParser()
 	packets := parser.Parse(filename)
 	flows := divideByFlow(packets)
@@ -123,7 +126,7 @@ func (s *TrafficService) Pipeline(filename string) error {
 		}
 	}
 
-	var trafficRecords []*models.Traffic
+	var results []models.Traffic
 
 	for _, flow := range flows {
 		pkt.AnalyzeFlow(flow)
@@ -153,8 +156,28 @@ func (s *TrafficService) Pipeline(filename string) error {
 			}
 		}
 
-		s.broadcast <- trafficModel
-		trafficRecords = append(trafficRecords, &trafficModel)
+		results = append(results, trafficModel)
+	}
+
+	return results
+}
+
+// Pipeline — парсит файл, анализирует, СОХРАНЯЕТ в БД и отправляет в broadcast (для реал-тайм данных)
+// приходит файл
+// парсим файл на PacketInfo
+// Разделяем PacketInfo на FlowInfo
+// Тут можно записать FlowInfo в БД
+// Собираем FlowStats по FlowInfo
+// Пропускаем FlowStats через детекторы и получаем DetectionResult
+// Если DetectionResult.IsAnomaly добавляем DetectionResult.Type.String() в список аномалий
+// Записываем аномалии для каждого FlowInfo в таблицу единым запросом
+func (s *TrafficService) Pipeline(filename string) error {
+	results := s.analyzeFile(filename)
+
+	var trafficRecords []*models.Traffic
+	for i := range results {
+		s.broadcast <- results[i]
+		trafficRecords = append(trafficRecords, &results[i])
 	}
 
 	err := s.repo.CreateBulk(trafficRecords)
@@ -162,4 +185,11 @@ func (s *TrafficService) Pipeline(filename string) error {
 		return err
 	}
 	return nil
+}
+
+// PipelineAnalyzeOnly — парсит файл и анализирует, но НЕ сохраняет в БД.
+// Используется для загрузки файлов: результат возвращается клиенту напрямую,
+// без влияния на основную базу данных.
+func (s *TrafficService) PipelineAnalyzeOnly(filename string) []models.Traffic {
+	return s.analyzeFile(filename)
 }

@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 # send_test_anomalies.sh — отправляет 50 записей с разными аномалиями
 # Запуск: bash send_test_anomalies.sh
 
@@ -36,6 +36,7 @@ for i in $(seq 1 50); do
       \"source_port\": \"${SP}\",
       \"destination_port\": \"${DP}\",
       \"ip_version\": \"IPv4\",
+      \"protocol\": \"TCP\",
       \"length\": ${LEN},
       \"traffic_volume\": ${VOL},
       \"flags\": \"${FLAGS}\",

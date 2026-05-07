@@ -24,6 +24,7 @@ curl -s -X POST "$API/api/traffic" \
     \"source_port\": \"${SP}\",
     \"destination_port\": \"${DP}\",
     \"ip_version\": \"IPv4\",
+    \"protocol\": \"TCP\",
     \"length\": ${LEN},
     \"traffic_volume\": ${VOL},
     \"flags\": \"SYN,ACK\",
