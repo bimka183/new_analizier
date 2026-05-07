@@ -40,3 +40,5 @@ services:
     depends_on:
       backend:
         condition: service_started # Фронт ждет запуска бэкенда
+volumes:
+  postgres_data:
