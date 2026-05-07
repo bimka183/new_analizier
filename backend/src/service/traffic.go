@@ -13,18 +13,18 @@ import (
 
 func MapFlowToTraffic(flow *pkt.FlowInfo) models.Traffic {
 	return models.Traffic{
-		FlowID:           flow.FlowID,
-		Interface:        flow.Interface,
-		Timestamp:        flow.StartTime.Format("2006-01-02 15:04:05"),
-		TrafficVolume:    flow.TrafficVolume,
-		SourceIP:         flow.SourceIP,
-		DestinationIP:    flow.DestinationIP,
-		SourcePort:       flow.SourcePort,
-		DestinationPort:  flow.DestPort,
-		IPVersion:        flow.IPVersion,
-		Protocol:         flow.Protocol,
-		Length:           flow.Length,
-		Flags:            strings.Join(flow.Statuses, ","),
+		FlowID:          flow.FlowID,
+		Interface:       flow.Interface,
+		Timestamp:       flow.StartTime.Format("2006-01-02 15:04:05"),
+		TrafficVolume:   flow.TrafficVolume,
+		SourceIP:        flow.SourceIP,
+		DestinationIP:   flow.DestinationIP,
+		SourcePort:      flow.SourcePort,
+		DestinationPort: flow.DestPort,
+		IPVersion:       flow.IPVersion,
+		Protocol:        flow.Protocol,
+		Length:          flow.Length,
+		Flags:           strings.Join(flow.Statuses, ","),
 		// FlowStats
 		Packets:          flow.Stats.CntPackets,
 		AvgPacketSize:    flow.Stats.AvgPacketSize,
@@ -171,7 +171,7 @@ func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 // Пропускаем FlowStats через детекторы и получаем DetectionResult
 // Если DetectionResult.IsAnomaly добавляем DetectionResult.Type.String() в список аномалий
 // Записываем аномалии для каждого FlowInfo в таблицу единым запросом
-func (s *TrafficService) Pipeline(filename string) error {
+func (s *TrafficService) Pipeline(filename string) ([]models.Traffic, error) {
 	results := s.analyzeFile(filename)
 
 	var trafficRecords []*models.Traffic
@@ -182,9 +182,9 @@ func (s *TrafficService) Pipeline(filename string) error {
 
 	err := s.repo.CreateBulk(trafficRecords)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return results, nil
 }
 
 // PipelineAnalyzeOnly — парсит файл и анализирует, но НЕ сохраняет в БД.

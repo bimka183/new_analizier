@@ -181,9 +181,13 @@ func (a *App) handleUpload(c *gin.Context) {
 
 	fmt.Printf("Uploading file: %s\n", path)
 
-	// Анализируем файл БЕЗ сохранения в БД
-	results := a.TrafficService.PipelineAnalyzeOnly(path)
-	fmt.Printf("File parsed and analyzed. Total results returned: %d\n", len(results))
+	// Анализируем файл И сохраняем в БД
+	results, err := a.TrafficService.Pipeline(path)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
+		return
+	}
+	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
 
 	c.JSON(200, gin.H{
 		"status": "analyzed",
