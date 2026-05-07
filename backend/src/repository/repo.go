@@ -11,6 +11,7 @@ type TrafficRepository interface {
 	Create(traffic *models.Traffic) error
 	CreateBulk(traffics []*models.Traffic) error
 	GetTraffic(limit int, offset int) ([]models.Traffic, error)
+	GetTrafficByID(id uint) (*models.Traffic, error)
 	GetTrafficWithFilter(limit int, offset int, filter models.TrafficFilter) ([]models.Traffic, error)
 	CountTraffic(filter models.TrafficFilter) (int64, error)
 	WriteFlowAnomaly() error
@@ -45,6 +46,15 @@ func (r *postgresTrafficRepo) CreateBulk(traffics []*models.Traffic) error {
 		return tx.Error
 	}
 	return nil
+}
+
+func (r *postgresTrafficRepo) GetTrafficByID(id uint) (*models.Traffic, error) {
+	var traffic models.Traffic
+	tx := r.db.Preload("Anomalies").First(&traffic, id)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	return &traffic, nil
 }
 
 func (r *postgresTrafficRepo) GetTraffic(limit int, offset int) ([]models.Traffic, error) {

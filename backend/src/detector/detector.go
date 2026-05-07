@@ -52,3 +52,10 @@ type Detector interface {
 	Name() string
 	Analyze(stats packet.FlowStats) DetectionResult
 }
+
+// FlowDetector — интерфейс для детекторов, работающих на уровне потока (FlowInfo),
+// а не на уровне статистики (FlowStats). Например, P2MP и FlowSwitching детекторы.
+type FlowDetector interface {
+	Name() string
+	AnalyzeFlow(flow *packet.FlowInfo) DetectionResult
+}

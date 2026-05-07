@@ -27,11 +27,18 @@ func MapFlowToTraffic(flow *pkt.FlowInfo) models.Traffic {
 		Flags:           strings.Join(flow.Statuses, ","),
 		// FlowStats
 		Packets:          flow.Stats.CntPackets,
+		FlowLength:       flow.Stats.FlowLength,
 		AvgPacketSize:    flow.Stats.AvgPacketSize,
 		StdDevPacketSize: flow.Stats.StdDevPacketSize,
 		BPS:              flow.Stats.BPS,
 		IATms:            float64(flow.Stats.IAT.Milliseconds()),
 		DurationSec:      flow.Stats.Duration.Seconds(),
+		CntSYN:           flow.Stats.CntSYN,
+		CntACK:           flow.Stats.CntACK,
+		CntFIN:           flow.Stats.CntFIN,
+		CntPSH:           flow.Stats.CntPSH,
+		CntRST:           flow.Stats.CntRST,
+		CntURG:           flow.Stats.CntURG,
 	}
 }
 
@@ -77,20 +84,23 @@ func contains(slice []string, item string) bool {
 }
 
 type TrafficService struct {
-	detectors []detector.Detector
-	repo      repository.TrafficRepository
-	broadcast chan models.Traffic
+	detectors     []detector.Detector
+	flowDetectors []detector.FlowDetector
+	repo          repository.TrafficRepository
+	broadcast     chan models.Traffic
 }
 
 func NewTrafficService(
 	repo repository.TrafficRepository,
 	detectors []detector.Detector,
+	flowDetectors []detector.FlowDetector,
 	broadcast chan models.Traffic,
 ) *TrafficService {
 	return &TrafficService{
-		repo:      repo,
-		detectors: detectors,
-		broadcast: broadcast,
+		repo:          repo,
+		detectors:     detectors,
+		flowDetectors: flowDetectors,
+		broadcast:     broadcast,
 	}
 }
 
@@ -136,6 +146,16 @@ func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 		// Per-flow детекторы (Worm, Virus)
 		for _, d := range s.detectors {
 			detRes := d.Analyze(flow.Stats)
+			if detRes.IsAnomaly {
+				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+					AnomalyType: detRes.Type.String(),
+				})
+			}
+		}
+
+		// FlowDetector'ы (P2MP, FlowSwitching и т.д.)
+		for _, fd := range s.flowDetectors {
+			detRes := fd.AnalyzeFlow(flow)
 			if detRes.IsAnomaly {
 				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
 					AnomalyType: detRes.Type.String(),
