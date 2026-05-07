@@ -20,6 +20,7 @@ type PacketInfo struct {
 	DstPort       string    // Порт назначения
 	Length        int       // Длина
 	Flags         []string
+	Payload       []byte
 }
 
 func PrintPacketInfo(info PacketInfo) {

@@ -1,45 +1,51 @@
 package packet
 
 import (
-	"math"
-	"time"
+    "math"
+    "time"
 )
 
+type TLSInfo struct {
+    JA3 string // отпечаток клиента TLS
+    SNI string // имя сервера из ClientHello
+}
+
 type FlowInfo struct {
-	FlowID        string
-	Interface     string
-	StartTime     time.Time
-	EndTime       time.Time
-	TrafficVolume int
-	SourceIP      string
-	DestinationIP string
-	IPVersion     string
-	SourcePort    string
-	DestPort      string
-	Length        int
-	Statuses      []string
-	Packets       []PacketInfo
-	Stats         FlowStats
+    FlowID        string
+    Interface     string
+    StartTime     time.Time
+    EndTime       time.Time
+    TrafficVolume int
+    SourceIP      string
+    DestinationIP string
+    IPVersion     string
+    SourcePort    string
+    DestPort      string
+    Length        int
+    Statuses      []string
+    Packets       []PacketInfo
+    Stats         FlowStats
 }
 
 type FlowStats struct {
-	CntPackets       int
-	FlowLength       int
-	AvgPacketSize    float64
-	StdDevPacketSize float64
-	BPS              float64 // Bytes per Second
-	IAT              time.Duration
-	Duration         time.Duration
-	CntSYN           int
-	CntACK           int
-	CntFIN           int
-	CntPSH           int
-	CntRST           int
-	CntURG           int
-	SrcIP            string
-	DstIP            string
-	SrcPort          string
-	DstPort          string
+    CntPackets       int
+    FlowLength       int
+    AvgPacketSize    float64
+    StdDevPacketSize float64
+    BPS              float64 // Bytes per Second
+    IAT              time.Duration
+    Duration         time.Duration
+    CntSYN           int
+    CntACK           int
+    CntFIN           int
+    CntPSH           int
+    CntRST           int
+    CntURG           int
+    SrcIP            string
+    DstIP            string
+    SrcPort          string
+    DstPort          string
+    TLS              *TLSInfo
 }
 
 func CalculateStdDev(lengths []int) float64 {
@@ -111,23 +117,28 @@ func CalculateFlags(flow *FlowStats, flags []string) {
 }
 
 func AnalyzeFlow(flow *FlowInfo) {
-	stat := FlowStats{}
-	var lengths []int
-	for _, packet := range flow.Packets {
-		stat.FlowLength += packet.Length
-		lengths = append(lengths, packet.Length)
-		CalculateFlags(&stat, packet.Flags)
-	}
-	stat.CntPackets = len(flow.Packets)
-	stat.AvgPacketSize = float64(stat.FlowLength) / float64(stat.CntPackets)
-	stat.StdDevPacketSize = CalculateStdDev(lengths)
-	stat.Duration = CalculateDuration(flow)
-	stat.BPS = CalculateBPS(stat.Duration, stat.FlowLength)
-	stat.IAT = CalculateIAT(stat.Duration, stat.CntPackets)
-	// Заполняем IP/Port из FlowInfo
-	stat.SrcIP = flow.SourceIP
-	stat.DstIP = flow.DestinationIP
-	stat.SrcPort = flow.SourcePort
-	stat.DstPort = flow.DestPort
-	flow.Stats = stat
+    existingTLS := flow.Stats.TLS
+    
+    stat := FlowStats{}
+    var lengths []int
+    for _, packet := range flow.Packets {
+        stat.FlowLength += packet.Length
+        lengths = append(lengths, packet.Length)
+        CalculateFlags(&stat, packet.Flags)
+    }
+    stat.CntPackets = len(flow.Packets)
+    stat.AvgPacketSize = float64(stat.FlowLength) / float64(stat.CntPackets)
+    stat.StdDevPacketSize = CalculateStdDev(lengths)
+    stat.Duration = CalculateDuration(flow)
+    stat.BPS = CalculateBPS(stat.Duration, stat.FlowLength)
+    stat.IAT = CalculateIAT(stat.Duration, stat.CntPackets)
+    stat.SrcIP = flow.SourceIP
+    stat.DstIP = flow.DestinationIP
+    stat.SrcPort = flow.SourcePort
+    stat.DstPort = flow.DestPort
+    
+    // Восстанавливаем TLS
+    stat.TLS = existingTLS
+    
+    flow.Stats = stat
 }
