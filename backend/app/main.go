@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -81,6 +82,7 @@ func (a *App) SetupRouter() {
 	{
 		api.POST("/traffic", a.handlePostTraffic)
 		api.GET("/traffic", a.handleGetTraffic)
+		api.GET("/traffic/:id", a.handleGetTrafficByID)
 		api.POST("/upload", a.handleUpload)
 		api.POST("/login", a.handleLogin)
 
@@ -266,6 +268,23 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		"data":  traffic,
 		"total": total,
 	})
+}
+
+func (a *App) handleGetTrafficByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	traffic, err := a.TrafficRepo.GetTrafficByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "traffic record not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, traffic)
 }
 
 // handleDeleteTraffic — очистка всех данных из БД (только для администратора)

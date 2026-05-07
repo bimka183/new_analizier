@@ -1,26 +1,33 @@
 package models
 
 type Traffic struct {
-	ID              uint      `json:"id" gorm:"primaryKey"`
-	FlowID          string    `json:"flow_id"`
-	Timestamp       string    `json:"timestamp"`
-	Interface       string    `json:"interface"`
-	SourceIP        string    `json:"source_ip"`
-	DestinationIP   string    `json:"destination_ip"`
-	SourcePort      string    `json:"source_port"`
-	DestinationPort string    `json:"destination_port"`
-	IPVersion       string    `json:"ip_version"`
-	Protocol        string    `json:"protocol"`
-	Length          int       `json:"length"`
-	TrafficVolume   int       `json:"traffic_volume"`
-	Flags           string    `json:"flags"`
+	ID              uint   `json:"id" gorm:"primaryKey"`
+	FlowID          string `json:"flow_id"`
+	Timestamp       string `json:"timestamp"`
+	Interface       string `json:"interface"`
+	SourceIP        string `json:"source_ip"`
+	DestinationIP   string `json:"destination_ip"`
+	SourcePort      string `json:"source_port"`
+	DestinationPort string `json:"destination_port"`
+	IPVersion       string `json:"ip_version"`
+	Protocol        string `json:"protocol"`
+	Length          int    `json:"length"`
+	TrafficVolume   int    `json:"traffic_volume"`
+	Flags           string `json:"flags"`
 	// FlowStats fields
-	Packets          int     `json:"packets"`
-	AvgPacketSize    float64 `json:"avg_packet_size"`
-	StdDevPacketSize float64 `json:"std_dev_packet_size"`
-	BPS              float64 `json:"bps"`
-	IATms            float64 `json:"iat_ms"`
-	DurationSec      float64 `json:"duration_sec"`
+	Packets          int       `json:"packets"`
+	FlowLength       int       `json:"flow_length"`
+	AvgPacketSize    float64   `json:"avg_packet_size"`
+	StdDevPacketSize float64   `json:"std_dev_packet_size"`
+	BPS              float64   `json:"bps"`
+	IATms            float64   `json:"iat_ms"`
+	DurationSec      float64   `json:"duration_sec"`
+	CntSYN           int       `json:"cnt_syn"`
+	CntACK           int       `json:"cnt_ack"`
+	CntFIN           int       `json:"cnt_fin"`
+	CntPSH           int       `json:"cnt_psh"`
+	CntRST           int       `json:"cnt_rst"`
+	CntURG           int       `json:"cnt_urg"`
 	Anomalies        []Anomaly `gorm:"foreignKey:TrafficID" json:"anomalies"`
 }
 

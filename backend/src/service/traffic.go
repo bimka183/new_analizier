@@ -27,11 +27,18 @@ func MapFlowToTraffic(flow *pkt.FlowInfo) models.Traffic {
 		Flags:           strings.Join(flow.Statuses, ","),
 		// FlowStats
 		Packets:          flow.Stats.CntPackets,
+		FlowLength:       flow.Stats.FlowLength,
 		AvgPacketSize:    flow.Stats.AvgPacketSize,
 		StdDevPacketSize: flow.Stats.StdDevPacketSize,
 		BPS:              flow.Stats.BPS,
 		IATms:            float64(flow.Stats.IAT.Milliseconds()),
 		DurationSec:      flow.Stats.Duration.Seconds(),
+		CntSYN:           flow.Stats.CntSYN,
+		CntACK:           flow.Stats.CntACK,
+		CntFIN:           flow.Stats.CntFIN,
+		CntPSH:           flow.Stats.CntPSH,
+		CntRST:           flow.Stats.CntRST,
+		CntURG:           flow.Stats.CntURG,
 	}
 }
 
