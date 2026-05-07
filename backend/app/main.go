@@ -193,11 +193,13 @@ func (a *App) handleUpload(c *gin.Context) {
 		return
 	}
 	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
+	summary := buildUploadFlowSummary(results)
 
 	c.JSON(200, gin.H{
 		"status": "analyzed",
 		"data":   results,
 		"total":  len(results),
+		"summary": summary,
 	})
 }
 
@@ -207,6 +209,8 @@ func (a *App) handlePostTraffic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	enrichTrafficFlowStats(&traffic)
 
 	// Автоматический вывод протокола, если он не передан (например, из старых тестовых скриптов)
 	if traffic.Protocol == "" {

@@ -4,13 +4,13 @@ import TrafficCharts from "../components/TrafficCharts";
 import TrafficPagination from "../components/TrafficPagination";
 import TrafficTable from "../components/TrafficTable";
 import SectionContainer from "../ui/section-container";
+import { API_BASE_URL } from "../constants/trafficApp";
 import { usePcapUpload } from "../hooks/usePcapUpload";
-import { useTrafficDataset } from "../hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "../hooks/useTrafficDashboardView";
 import "./AnalyzeFilePage.scss";
 
 function AnalyzeFilePage() {
-  const { apiBaseRef, fetchAllData } = useTrafficDataset();
+  const apiBaseRef = React.useRef(API_BASE_URL);
   const [fileRows, setFileRows] = React.useState([]);
   const {
     file,
@@ -22,7 +22,6 @@ function AnalyzeFilePage() {
     handleUpload: uploadPcapFile,
   } = usePcapUpload({
     apiBaseRef,
-    fetchAllData,
     onUploadSuccess: setFileRows,
   });
 

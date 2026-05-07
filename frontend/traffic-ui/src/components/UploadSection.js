@@ -56,6 +56,12 @@ function formatFileSize(sizeInBytes) {
   return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+function formatNumber(value, fractionDigits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return n.toFixed(fractionDigits);
+}
+
 function UploadSection({
   file,
   uploadStatus,
@@ -69,6 +75,7 @@ function UploadSection({
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const isAnalysisInProgress = uploadStatus === "uploading" || uploadStatus === "processing";
 
   const totalThreats = useMemo(
     () => threatSummary.reduce((acc, item) => acc + item.value, 0),
@@ -108,7 +115,7 @@ function UploadSection({
               className="upload-dropzone__input"
             />
             <Button onClick={() => fileInputRef.current?.click()}>Choose File</Button>
-            <Button onClick={onUpload} disabled={!file || uploadStatus === "uploading"}>
+            <Button onClick={onUpload} disabled={!file || isAnalysisInProgress}>
               Start Analysis
             </Button>
           </div>
@@ -149,6 +156,15 @@ function UploadSection({
             </p>
             <p>
               <span>Duration:</span> {analysisSummary.duration}
+            </p>
+            <p>
+              <span>Avg BPS:</span> {formatNumber(analysisSummary.bpsAvg)}
+            </p>
+            <p>
+              <span>Avg packet size:</span> {formatNumber(analysisSummary.avgPacketSizeAvg)}
+            </p>
+            <p>
+              <span>Avg IAT (ms):</span> {formatNumber(analysisSummary.iatMsAvg)}
             </p>
           </div>
           <Button disabled={!isReportAvailable}>View Full Report</Button>

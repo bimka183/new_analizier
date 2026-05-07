@@ -74,6 +74,7 @@ function TrafficTable({
   sortColumn = null,
   sortDirection = null,
   onSortColumn,
+  enableDetailsForSingleRow = false,
 }) {
   const [modalPackets, setModalPackets] = useState(null);
 
@@ -109,8 +110,9 @@ function TrafficTable({
             const s = getTrafficGroupSummary(group.packets);
             const rowClass = s.count > 1 ? "traffic-table__row--grouped" : "";
             const anomalyClass = getAnomalyBadgeClassName(s.anomalyLabel);
+            const isDetailsEnabled = enableDetailsForSingleRow || s.count > 1;
             const openDetails = () => {
-              if (s.count > 1) setModalPackets(group.packets);
+              if (isDetailsEnabled) setModalPackets(group.packets);
             };
 
             return (
@@ -119,16 +121,18 @@ function TrafficTable({
                 className={rowClass}
                 onClick={openDetails}
                 onKeyDown={(e) => {
-                  if (s.count > 1 && (e.key === "Enter" || e.key === " ")) {
+                  if (isDetailsEnabled && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
                     openDetails();
                   }
                 }}
-                tabIndex={s.count > 1 ? 0 : undefined}
-                role={s.count > 1 ? "button" : undefined}
+                tabIndex={isDetailsEnabled ? 0 : undefined}
+                role={isDetailsEnabled ? "button" : undefined}
                 aria-label={
-                  s.count > 1
-                    ? "Open packet list for this group"
+                  isDetailsEnabled
+                    ? s.count > 1
+                      ? "Open packet list for this group"
+                      : "Open packet details"
                     : undefined
                 }
               >

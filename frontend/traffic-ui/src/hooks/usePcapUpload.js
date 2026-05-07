@@ -1,30 +1,33 @@
 import { useCallback, useState } from "react";
 import { EMPTY_ANALYSIS_SUMMARY } from "../constants/trafficApp";
 
-export function usePcapUpload({ apiBaseRef, fetchAllData, onUploadSuccess }) {
+export function usePcapUpload({ apiBaseRef, onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState("idle");
   const [analysisSummary, setAnalysisSummary] = useState(EMPTY_ANALYSIS_SUMMARY);
   const [isReportAvailable, setIsReportAvailable] = useState(false);
 
-  const fetchAnalysisSummary = useCallback(async (startedAt) => {
-    const response = await fetch(
-      `${apiBaseRef.current}/api/traffic?page=1&limit=10000`
-    );
-    const result = await response.json();
-    const rows = result.data || [];
-    const packetCount = rows.reduce((acc, item) => acc + (item.length || 0), 0);
+  const updateAnalysisSummary = useCallback((rows, total, uploadSummary, startedAt) => {
+    const packetCount =
+      Number(uploadSummary?.packets) ||
+      rows.reduce((acc, item) => acc + (item.packets || item.length || 0), 0);
     const durationMs = startedAt ? Math.max(Date.now() - startedAt.getTime(), 0) : 0;
     const duration = new Date(durationMs).toISOString().slice(11, 19);
+    const bpsAvg = Number(uploadSummary?.bps_avg) || 0;
+    const avgPacketSizeAvg = Number(uploadSummary?.avg_packet_size_avg) || 0;
+    const iatMsAvg = Number(uploadSummary?.iat_ms_avg) || 0;
 
     setAnalysisSummary({
       packets: packetCount,
-      flows: result.total || rows.length,
+      flows: Number.isFinite(total) ? total : rows.length,
       startTime: startedAt ? startedAt.toLocaleTimeString() : "-",
       duration,
+      bpsAvg,
+      avgPacketSizeAvg,
+      iatMsAvg,
     });
     setIsReportAvailable(rows.length > 0);
-  }, [apiBaseRef]);
+  }, []);
 
   const handleChooseFile = useCallback((nextFile) => {
     setFile(nextFile);
@@ -58,9 +61,13 @@ export function usePcapUpload({ apiBaseRef, fetchAllData, onUploadSuccess }) {
       }
 
       setUploadStatus("processing");
-      const uploadedRows = await fetchAllData();
-      onUploadSuccess?.(uploadedRows || []);
-      await fetchAnalysisSummary(startedAt);
+      const result = await response.json();
+      const uploadedRows = Array.isArray(result?.data) ? result.data : [];
+      const uploadedTotal = Number(result?.total);
+      const uploadSummary = result?.summary;
+
+      onUploadSuccess?.(uploadedRows);
+      updateAnalysisSummary(uploadedRows, uploadedTotal, uploadSummary, startedAt);
       setUploadStatus("completed");
     } catch (error) {
       setUploadStatus("error");
@@ -73,7 +80,7 @@ export function usePcapUpload({ apiBaseRef, fetchAllData, onUploadSuccess }) {
       // eslint-disable-next-line no-console
       console.error("PCAP upload failed", error);
     }
-  }, [apiBaseRef, fetchAllData, fetchAnalysisSummary, file, onUploadSuccess]);
+  }, [apiBaseRef, file, onUploadSuccess, updateAnalysisSummary]);
 
   return {
     file,

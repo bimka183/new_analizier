@@ -51,6 +51,7 @@ function SessionsPage({
           sortColumn={sortColumn}
           sortDirection={sortDirection}
           onSortColumn={onSortColumn}
+          enableDetailsForSingleRow
         />
         <TrafficPagination
           currentPage={currentPage}
