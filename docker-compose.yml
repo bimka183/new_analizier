@@ -5,8 +5,24 @@ services:
       dockerfile: backend/app/Dockerfile
     ports:
       - "8080:8080"
+    volumes:
+      - ./files:/app/files
     environment:
       - GIN_MODE=release
+      - DB_DSN=host=postgres user=postgres password=postgres dbname=traffic port=5432 sslmode=disable TimeZone=UTC
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: traffic
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   frontend:
     build:
@@ -16,3 +32,6 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+volumes:
+  postgres_data:

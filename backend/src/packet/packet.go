@@ -16,6 +16,7 @@ type PacketInfo struct {
 	SrcIP         string    // Источник (IP адрес)
 	DstIP         string    // Назначение (IP адрес)
 	IPVersion     string    // Internet Протокол version
+	Protocol      string    // Протокол транспортного уровня (TCP, UDP, ICMP и т.д.)
 	SrcPort       string    // Порт источника
 	DstPort       string    // Порт назначения
 	Length        int       // Длина
@@ -37,6 +38,7 @@ func PrintPacketInfo(info PacketInfo) {
 	formatField("Источник", info.SrcIP)
 	formatField("Назначение", info.DstIP)
 	formatField("Версия IP", info.IPVersion)
+	formatField("Протокол", info.Protocol)
 
 	if info.SrcPort != "" || info.DstPort != "" {
 		formatField("Порт источника", ifEmpty(info.SrcPort, "N/A"))

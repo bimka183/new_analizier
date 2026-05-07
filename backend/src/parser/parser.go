@@ -53,6 +53,29 @@ func (p *Parser) getInfo(packet gopacket.Packet) []string {
 	return flags
 }
 
+// getProtocol определяет тип протокола транспортного уровня
+func (p *Parser) getProtocol(packet gopacket.Packet) string {
+	transLayer := packet.TransportLayer()
+	if transLayer == nil {
+		// Проверяем ICMP на сетевом уровне
+		if packet.Layer(layers.LayerTypeICMPv4) != nil {
+			return "ICMP"
+		}
+		if packet.Layer(layers.LayerTypeICMPv6) != nil {
+			return "ICMPv6"
+		}
+		return "Other"
+	}
+	switch transLayer.LayerType() {
+	case layers.LayerTypeTCP:
+		return "TCP"
+	case layers.LayerTypeUDP:
+		return "UDP"
+	default:
+		return transLayer.LayerType().String()
+	}
+}
+
 func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 	handle, err := pcap.OpenOffline(filename)
 	if err != nil {
@@ -74,6 +97,7 @@ func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 			Timestamp:     packet.Metadata().Timestamp,
 			Length:        int(packet.Metadata().Length),
 			TrafficVolume: int(packet.Metadata().CaptureInfo.Length),
+			Protocol:      p.getProtocol(packet),
 		}
 		if netLayer := packet.NetworkLayer(); netLayer != nil {
 			flow := netLayer.NetworkFlow()
