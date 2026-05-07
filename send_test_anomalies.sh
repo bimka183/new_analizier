@@ -23,7 +23,7 @@ for i in $(seq 1 50); do
   LEN=$((RANDOM % 1500 + 64))
   MIN=$((i / 6))
   SEC=$((i % 60))
-  TS=$(printf "2025-04-06 03:%02d:%02d" $MIN $SEC)
+  TS=$(printf "2025-04-06 %02d:%02d:%02d" $HOUR $MIN $SEC)
 
   curl -s -X POST "$API/api/traffic" \
     -H "Content-Type: application/json" \
