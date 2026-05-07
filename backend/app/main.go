@@ -60,7 +60,10 @@ func NewApp(db *gorm.DB) *App {
 
 	broadcast := make(chan models.Traffic)
 
-	trafficService := service.NewTrafficService(repo, detectors, broadcast)
+	// FlowDetector'ы (пока пустой список — P2MP / FlowSwitching подключаются здесь)
+	var flowDetectors []detector.FlowDetector
+
+	trafficService := service.NewTrafficService(repo, detectors, flowDetectors, broadcast)
 
 	return &App{
 		Router:    router,
