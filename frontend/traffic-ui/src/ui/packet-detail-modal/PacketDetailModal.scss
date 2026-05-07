@@ -1,0 +1,95 @@
+@use "../../styles/vars.scss" as *;
+
+.packet-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+
+  &__backdrop {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+    background: color-mix(in srgb, var(--text-color) 28%, transparent);
+  }
+
+  &__panel {
+    position: relative;
+    z-index: 1;
+    width: min(960px, 100%);
+    max-height: min(90vh, 900px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--control-border-color);
+    border-radius: 8px;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    box-shadow: 0 8px 32px
+      color-mix(in srgb, var(--text-color) 18%, transparent);
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--control-border-color);
+    flex-shrink: 0;
+  }
+
+  &__title {
+    margin: 0;
+    font-size: $font-size-large;
+    font-weight: $font-weight-semibold;
+  }
+
+  &__body {
+    overflow: auto;
+    padding: 12px 16px 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: $font-size-small;
+
+    th,
+    td {
+      border: 1px solid var(--control-border-color);
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      font-weight: $font-weight-semibold;
+      background-color: color-mix(
+        in srgb,
+        var(--control-border-color) 35%,
+        var(--background-color)
+      );
+    }
+  }
+}
+
+@media (max-width: $mobile-max) {
+  .packet-detail-modal {
+    align-items: stretch;
+    padding: 0;
+
+    &__panel {
+      width: 100%;
+      max-height: 100vh;
+      border-radius: 0;
+    }
+  }
+}
