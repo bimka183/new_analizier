@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import TrafficPagination from "./components/TrafficPagination";
 import TrafficTable from "./components/TrafficTable";
 import TrafficCharts from "./components/TrafficCharts";
@@ -12,10 +12,12 @@ import SessionsPage from "./pages/SessionsPage";
 import AnalyzeFilePage from "./pages/AnalyzeFilePage";
 import { useTrafficDataset } from "./hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "./hooks/useTrafficDashboardView";
+import { getTrafficGroupSummary } from "./utils/groupTrafficRows";
 import "./App.scss";
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const tableBaseOrder = location.pathname.startsWith("/sessions")
     ? "newest"
     : "chronological";
@@ -54,6 +56,32 @@ function App() {
     threatSummary,
   } = useTrafficDashboardView(allData, { tableBaseOrder, fetchFilteredFn: fetchWithFilters });
   const systemStatus = "OK";
+
+  const handleDashboardRowClick = React.useCallback((group) => {
+    const s = getTrafficGroupSummary(group.packets);
+
+    setFilterSource(
+      s.sourceLabel && !s.sourceLabel.startsWith("Group") ? s.sourceLabel : ""
+    );
+    setFilterDestination(
+      s.destinationLabel && s.destinationLabel !== "—" ? s.destinationLabel : ""
+    );
+    setFilterProtocol(
+      s.protocolLabel && s.protocolLabel !== "—" ? s.protocolLabel : ""
+    );
+    setFilterAnomaly(
+      s.anomalyLabel && s.anomalyLabel !== "Mixed" && s.anomalyLabel !== "None"
+        ? s.anomalyLabel
+        : ""
+    );
+    setFilterPort("");
+    setFilterFlags([]);
+
+    navigate("/sessions", { state: { autoDetailPackets: group.packets } });
+  }, [
+    setFilterSource, setFilterDestination, setFilterProtocol,
+    setFilterAnomaly, setFilterPort, setFilterFlags, navigate,
+  ]);
 
   return (
     <div className="app-shell">
@@ -105,6 +133,7 @@ function App() {
                         sortColumn={sortColumn}
                         sortDirection={sortDirection}
                         onSortColumn={cycleTableSort}
+                        onRowClick={handleDashboardRowClick}
                       />
                       <TrafficPagination
                         currentPage={currentPage}

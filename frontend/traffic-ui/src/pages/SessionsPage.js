@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import TrafficFilters from "../components/TrafficFilters";
 import TrafficPagination from "../components/TrafficPagination";
 import TrafficTable from "../components/TrafficTable";
@@ -30,6 +31,20 @@ function SessionsPage({
   onPrevPage,
   onNextPage,
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const autoDetailPacketsRef = React.useRef(
+    location.state?.autoDetailPackets || null
+  );
+
+  React.useEffect(() => {
+    if (location.state?.autoDetailPackets) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <section className="sessions-page">
       <h2>Sessions</h2>
@@ -60,6 +75,7 @@ function SessionsPage({
           sortDirection={sortDirection}
           onSortColumn={onSortColumn}
           enableDetailsForSingleRow
+          initialModalPackets={autoDetailPacketsRef.current}
         />
         <TrafficPagination
           currentPage={currentPage}

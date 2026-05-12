@@ -75,8 +75,10 @@ function TrafficTable({
   sortDirection = null,
   onSortColumn,
   enableDetailsForSingleRow = false,
+  onRowClick,
+  initialModalPackets = null,
 }) {
-  const [modalPackets, setModalPackets] = useState(null);
+  const [modalPackets, setModalPackets] = useState(initialModalPackets);
 
   const headerCells = useMemo(() => {
     if (typeof onSortColumn === "function") {
@@ -109,33 +111,41 @@ function TrafficTable({
           {groups.map((group) => {
             const s = getTrafficGroupSummary(group.packets);
             const anomalyClass = getAnomalyBadgeClassName(s.anomalyLabel);
+            const hasRowClick = typeof onRowClick === "function";
             const isDetailsEnabled = enableDetailsForSingleRow || s.count > 1;
+            const isInteractive = hasRowClick || isDetailsEnabled;
             const rowClass = [
               s.count > 1 ? "traffic-table__row--grouped" : "",
-              isDetailsEnabled ? "traffic-table__row--clickable" : "",
+              isInteractive ? "traffic-table__row--clickable" : "",
             ].filter(Boolean).join(" ");
-            const openDetails = () => {
-              if (isDetailsEnabled) setModalPackets(group.packets);
+            const handleClick = () => {
+              if (hasRowClick) {
+                onRowClick(group);
+              } else if (isDetailsEnabled) {
+                setModalPackets(group.packets);
+              }
             };
 
             return (
               <tr
                 key={group.key}
                 className={rowClass}
-                onClick={openDetails}
+                onClick={handleClick}
                 onKeyDown={(e) => {
-                  if (isDetailsEnabled && (e.key === "Enter" || e.key === " ")) {
+                  if (isInteractive && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
-                    openDetails();
+                    handleClick();
                   }
                 }}
-                tabIndex={isDetailsEnabled ? 0 : undefined}
-                role={isDetailsEnabled ? "button" : undefined}
+                tabIndex={isInteractive ? 0 : undefined}
+                role={isInteractive ? "button" : undefined}
                 aria-label={
-                  isDetailsEnabled
-                    ? s.count > 1
-                      ? "Open packet list for this group"
-                      : "Open packet details"
+                  isInteractive
+                    ? hasRowClick
+                      ? "View session details"
+                      : s.count > 1
+                        ? "Open packet list for this group"
+                        : "Open packet details"
                     : undefined
                 }
               >
