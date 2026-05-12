@@ -7,11 +7,13 @@ import (
 	"analizier/backend/src/service"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,11 +43,14 @@ type App struct {
 	Upgrader       websocket.Upgrader
 	TrafficService *service.TrafficService
 	TrafficRepo    repository.TrafficRepository
+
+	progressMu sync.Mutex
+	progressCh map[uint]chan models.ProgressEvent
 }
 
 func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
-	router.MaxMultipartMemory = 10 << 20
+	router.MaxMultipartMemory = 512 << 20
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
@@ -75,6 +80,7 @@ func NewApp(db *gorm.DB) *App {
 		},
 		TrafficService: trafficService,
 		TrafficRepo:    repo,
+		progressCh:     make(map[uint]chan models.ProgressEvent),
 	}
 }
 
@@ -87,6 +93,10 @@ func (a *App) SetupRouter() {
 		api.GET("/traffic", a.handleGetTraffic)
 		api.GET("/traffic/:id", a.handleGetTrafficByID)
 		api.POST("/upload", a.handleUpload)
+		api.GET("/uploads", a.handleGetUploads)
+		api.GET("/uploads/:id", a.handleGetUploadByID)
+		api.DELETE("/uploads/:id", a.handleDeleteUpload)
+		api.GET("/uploads/:id/progress", a.handleGetUploadProgress)
 		api.POST("/login", a.handleLogin)
 
 		// Администраторские эндпоинты
@@ -186,21 +196,173 @@ func (a *App) handleUpload(c *gin.Context) {
 
 	fmt.Printf("Uploading file: %s\n", path)
 
-	// Анализируем файл И сохраняем в БД
-	results, err := a.TrafficService.Pipeline(path)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
+	fileUpload := &models.FileUpload{
+		Filename: file.Filename,
+		Status:   "processing",
+		Summary:  "{}",
+	}
+	if err := a.TrafficRepo.CreateFileUpload(fileUpload); err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create upload record: " + err.Error()})
 		return
 	}
-	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
-	summary := buildUploadFlowSummary(results)
 
+	progressCh := make(chan models.ProgressEvent, 64)
+	a.progressMu.Lock()
+	a.progressCh[fileUpload.ID] = progressCh
+	a.progressMu.Unlock()
+
+	c.JSON(200, gin.H{"status": "queued", "upload_id": fileUpload.ID})
+
+	go func(uploadID uint, filename string) {
+		defer func() {
+			a.progressMu.Lock()
+			delete(a.progressCh, uploadID)
+			a.progressMu.Unlock()
+			close(progressCh)
+		}()
+
+		results, procErr := a.TrafficService.PipelineWithProgress(filename, progressCh, uploadID)
+		if procErr != nil {
+			fmt.Printf("Processing error for upload %d: %v\n", uploadID, procErr)
+			upload, _ := a.TrafficRepo.GetFileUploadByID(uploadID)
+			if upload != nil {
+				upload.Status = "error"
+				upload.Error = procErr.Error()
+				a.TrafficRepo.UpdateFileUpload(upload)
+			}
+			sendProgress(progressCh, "error", 0)
+			return
+		}
+
+		fmt.Printf("File parsed, analyzed and saved. Upload %d, total results: %d\n", uploadID, len(results))
+
+		summary := buildUploadFlowSummary(results)
+		summaryJSON, _ := json.Marshal(summary)
+
+		upload, _ := a.TrafficRepo.GetFileUploadByID(uploadID)
+		if upload != nil {
+			upload.Status = "completed"
+			upload.FlowCount = len(results)
+			upload.Summary = string(summaryJSON)
+			a.TrafficRepo.UpdateFileUpload(upload)
+		}
+
+		sendProgress(progressCh, "done", 100)
+	}(fileUpload.ID, path)
+}
+
+func sendProgress(ch chan<- models.ProgressEvent, phase string, progress int) {
+	if ch == nil {
+		return
+	}
+	select {
+	case ch <- models.ProgressEvent{Phase: phase, Progress: progress}:
+	default:
+	}
+}
+
+func (a *App) handleGetUploadProgress(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	a.progressMu.Lock()
+	ch, ok := a.progressCh[uint(id)]
+	a.progressMu.Unlock()
+
+	if !ok {
+		upload, dbErr := a.TrafficRepo.GetFileUploadByID(uint(id))
+		if dbErr != nil {
+			c.JSON(404, gin.H{"error": "upload not found"})
+			return
+		}
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		if upload.Status == "completed" {
+			fmt.Fprintf(c.Writer, "data: %s\n\n", mustJSON(models.ProgressEvent{Phase: "done", Progress: 100}))
+		} else if upload.Status == "error" {
+			fmt.Fprintf(c.Writer, "data: %s\n\n", mustJSON(models.ProgressEvent{Phase: "error", Progress: 0}))
+		}
+		c.Writer.Flush()
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Writer.Flush()
+
+	clientGone := c.Request.Context().Done()
+	for {
+		select {
+		case <-clientGone:
+			return
+		case evt, open := <-ch:
+			if !open {
+				return
+			}
+			fmt.Fprintf(c.Writer, "data: %s\n\n", mustJSON(evt))
+			c.Writer.Flush()
+			if evt.Phase == "done" || evt.Phase == "error" {
+				return
+			}
+		}
+	}
+}
+
+func mustJSON(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+func (a *App) handleGetUploads(c *gin.Context) {
+	uploads, err := a.TrafficRepo.GetFileUploads()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"data": uploads})
+}
+
+func (a *App) handleGetUploadByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
+		return
+	}
+	upload, err := a.TrafficRepo.GetFileUploadByID(uint(id))
+	if err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
+		return
+	}
 	c.JSON(200, gin.H{
-		"status": "analyzed",
-		"data":   results,
-		"total":  len(results),
-		"summary": summary,
+		"id":          upload.ID,
+		"filename":    upload.Filename,
+		"uploaded_at": upload.UploadAt,
+		"flow_count":  upload.FlowCount,
+		"status":      upload.Status,
+		"error":       upload.Error,
+		"summary":     upload.Summary,
 	})
+}
+
+func (a *App) handleDeleteUpload(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
+		return
+	}
+	if err := a.TrafficRepo.DeleteFileUpload(uint(id)); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "deleted"})
 }
 
 func (a *App) handlePostTraffic(c *gin.Context) {
@@ -250,7 +412,12 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 	}
 	offset := (pageInt - 1) * limitInt
 
-	// Собираем фильтры из query params
+	uploadIDStr := c.DefaultQuery("upload_id", "0")
+	var uploadID uint
+	if v, e := strconv.ParseUint(uploadIDStr, 10, 64); e == nil {
+		uploadID = uint(v)
+	}
+
 	filter := models.TrafficFilter{
 		SourceIP:      c.DefaultQuery("source_ip", ""),
 		DestinationIP: c.DefaultQuery("destination_ip", ""),
@@ -258,6 +425,7 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
 		Flags:         c.DefaultQuery("flags", ""),
+		UploadID:      uploadID,
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)
@@ -447,7 +615,11 @@ func main() {
 		panic(fmt.Errorf("could not connect to database after retries: %v", err))
 	}
 
-	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{})
+	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{}, &models.FileUpload{})
+
+	if db.Migrator().HasColumn(&models.FileUpload{}, "results") {
+		db.Migrator().DropColumn(&models.FileUpload{}, "results")
+	}
 
 	app := NewApp(db)
 

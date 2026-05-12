@@ -1,7 +1,10 @@
 package models
 
+import "time"
+
 type Traffic struct {
 	ID              uint   `json:"id" gorm:"primaryKey"`
+	UploadID        uint   `json:"upload_id" gorm:"index"`
 	FlowID          string `json:"flow_id"`
 	Timestamp       string `json:"timestamp"`
 	Interface       string `json:"interface"`
@@ -48,6 +51,30 @@ type User struct {
 	Role     string `json:"role" gorm:"default:user"` // "user" or "admin"
 }
 
+type FileUpload struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Filename  string    `json:"filename"`
+	UploadAt  time.Time `json:"uploaded_at" gorm:"autoCreateTime"`
+	FlowCount int       `json:"flow_count"`
+	Status    string    `json:"status" gorm:"default:processing"`
+	Error     string    `json:"error,omitempty"`
+	Summary   string    `json:"summary" gorm:"type:jsonb"`
+}
+
+type ProgressEvent struct {
+	Phase    string `json:"phase"`
+	Progress int    `json:"progress"`
+}
+
+type FileUploadListItem struct {
+	ID        uint      `json:"id"`
+	Filename  string    `json:"filename"`
+	UploadAt  time.Time `json:"uploaded_at"`
+	FlowCount int       `json:"flow_count"`
+	Status    string    `json:"status"`
+	Summary   string    `json:"summary"`
+}
+
 // TrafficFilter holds all supported server-side filter parameters
 type TrafficFilter struct {
 	SourceIP      string
@@ -56,4 +83,5 @@ type TrafficFilter struct {
 	AnomalyType   string
 	Protocol      string
 	Flags         string
+	UploadID      uint
 }
