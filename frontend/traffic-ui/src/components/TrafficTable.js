@@ -108,9 +108,12 @@ function TrafficTable({
         <tbody>
           {groups.map((group) => {
             const s = getTrafficGroupSummary(group.packets);
-            const rowClass = s.count > 1 ? "traffic-table__row--grouped" : "";
             const anomalyClass = getAnomalyBadgeClassName(s.anomalyLabel);
             const isDetailsEnabled = enableDetailsForSingleRow || s.count > 1;
+            const rowClass = [
+              s.count > 1 ? "traffic-table__row--grouped" : "",
+              isDetailsEnabled ? "traffic-table__row--clickable" : "",
+            ].filter(Boolean).join(" ");
             const openDetails = () => {
               if (isDetailsEnabled) setModalPackets(group.packets);
             };

@@ -257,6 +257,7 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		Port:          c.DefaultQuery("port", ""),
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
+		Flags:         c.DefaultQuery("flags", ""),
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)

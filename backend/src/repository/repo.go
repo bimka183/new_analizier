@@ -3,6 +3,7 @@ package repository
 import (
 	"analizier/backend/src/models"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -91,6 +92,14 @@ func (r *postgresTrafficRepo) applyFilters(query *gorm.DB, filter models.Traffic
 			query = query.Where("id NOT IN (SELECT traffic_id FROM anomalies)")
 		} else {
 			query = query.Where("id IN (SELECT traffic_id FROM anomalies WHERE anomaly_type = ?)", filter.AnomalyType)
+		}
+	}
+	if filter.Flags != "" {
+		for _, flag := range strings.Split(filter.Flags, ",") {
+			flag = strings.TrimSpace(flag)
+			if flag != "" {
+				query = query.Where("flags LIKE ?", "%"+flag+"%")
+			}
 		}
 	}
 	return query

@@ -13,10 +13,14 @@ function SessionsPage({
   filterDestination,
   filterPort,
   filterAnomaly,
+  filterProtocol,
+  filterFlags,
   onFilterSourceChange,
   onFilterDestinationChange,
   onFilterPortChange,
   onFilterAnomalyChange,
+  onFilterProtocolChange,
+  onFilterFlagsChange,
   onClearFilters,
   currentPage,
   totalPages,
@@ -40,10 +44,14 @@ function SessionsPage({
           filterDestination={filterDestination}
           filterPort={filterPort}
           filterAnomaly={filterAnomaly}
+          filterProtocol={filterProtocol}
+          filterFlags={filterFlags}
           onFilterSourceChange={onFilterSourceChange}
           onFilterDestinationChange={onFilterDestinationChange}
           onFilterPortChange={onFilterPortChange}
           onFilterAnomalyChange={onFilterAnomalyChange}
+          onFilterProtocolChange={onFilterProtocolChange}
+          onFilterFlagsChange={onFilterFlagsChange}
           onClearFilters={onClearFilters}
         />
         <TrafficTable

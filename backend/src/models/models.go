@@ -55,4 +55,5 @@ type TrafficFilter struct {
 	Port          string
 	AnomalyType   string
 	Protocol      string
+	Flags         string
 }

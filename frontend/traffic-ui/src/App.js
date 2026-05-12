@@ -21,7 +21,7 @@ function App() {
     : "chronological";
 
   const [processedFilesCount] = React.useState(0);
-  const { allData } = useTrafficDataset();
+  const { allData, fetchWithFilters } = useTrafficDataset();
 
   const {
     filterSource,
@@ -32,6 +32,10 @@ function App() {
     setFilterPort,
     filterAnomaly,
     setFilterAnomaly,
+    filterProtocol,
+    setFilterProtocol,
+    filterFlags,
+    setFilterFlags,
     clearFilters,
     sortColumn,
     sortDirection,
@@ -48,7 +52,7 @@ function App() {
     anomaliesCount,
     trafficByTime,
     threatSummary,
-  } = useTrafficDashboardView(allData, { tableBaseOrder });
+  } = useTrafficDashboardView(allData, { tableBaseOrder, fetchFilteredFn: fetchWithFilters });
   const systemStatus = "OK";
 
   return (
@@ -128,10 +132,14 @@ function App() {
                   filterDestination={filterDestination}
                   filterPort={filterPort}
                   filterAnomaly={filterAnomaly}
+                  filterProtocol={filterProtocol}
+                  filterFlags={filterFlags}
                   onFilterSourceChange={setFilterSource}
                   onFilterDestinationChange={setFilterDestination}
                   onFilterPortChange={setFilterPort}
                   onFilterAnomalyChange={setFilterAnomaly}
+                  onFilterProtocolChange={setFilterProtocol}
+                  onFilterFlagsChange={setFilterFlags}
                   onClearFilters={clearFilters}
                   currentPage={currentPage}
                   totalPages={totalPages || 1}
