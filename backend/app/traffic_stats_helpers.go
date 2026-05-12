@@ -1,6 +1,24 @@
 package main
 
-import "analizier/backend/src/models"
+import (
+	"analizier/backend/src/models"
+	"sort"
+)
+
+type ThreatEntry struct {
+	Name  string `json:"name"`
+	Value int    `json:"value"`
+}
+
+var knownThreatTypes = []string{
+	"DoS/DDoS Attack",
+	"Network Overload",
+	"Network/Port Scanning",
+	"Worm Activity",
+	"Confirmed Virus Activity",
+	"Point-to-Multipoint",
+	"Flow Switching",
+}
 
 type UploadFlowSummary struct {
 	Flows            int     `json:"flows"`
@@ -18,6 +36,7 @@ type UploadFlowSummary struct {
 	TcpPshTotal      int     `json:"cnt_psh_total"`
 	TcpRstTotal      int     `json:"cnt_rst_total"`
 	TcpUrgTotal      int     `json:"cnt_urg_total"`
+	ThreatSummary    []ThreatEntry `json:"threat_summary"`
 }
 
 func enrichTrafficFlowStats(traffic *models.Traffic) {
@@ -65,6 +84,8 @@ func buildUploadFlowSummary(results []models.Traffic) UploadFlowSummary {
 	var iatMsTotal float64
 	var synTotal, ackTotal, finTotal, pshTotal, rstTotal, urgTotal int
 
+	threatCounts := make(map[string]int)
+
 	for _, row := range results {
 		packetsTotal += row.Packets
 		durationTotal += row.DurationSec
@@ -79,7 +100,28 @@ func buildUploadFlowSummary(results []models.Traffic) UploadFlowSummary {
 		pshTotal += row.CntPSH
 		rstTotal += row.CntRST
 		urgTotal += row.CntURG
+
+		for _, a := range row.Anomalies {
+			if a.AnomalyType != "" && a.AnomalyType != "None" {
+				threatCounts[a.AnomalyType]++
+			}
+		}
 	}
+
+	knownSet := make(map[string]bool, len(knownThreatTypes))
+	threatSummary := make([]ThreatEntry, 0, len(knownThreatTypes))
+	for _, name := range knownThreatTypes {
+		knownSet[name] = true
+		threatSummary = append(threatSummary, ThreatEntry{Name: name, Value: threatCounts[name]})
+	}
+	var extras []ThreatEntry
+	for name, count := range threatCounts {
+		if !knownSet[name] {
+			extras = append(extras, ThreatEntry{Name: name, Value: count})
+		}
+	}
+	sort.Slice(extras, func(i, j int) bool { return extras[i].Value > extras[j].Value })
+	threatSummary = append(threatSummary, extras...)
 
 	denom := float64(flows)
 
@@ -99,5 +141,6 @@ func buildUploadFlowSummary(results []models.Traffic) UploadFlowSummary {
 		TcpPshTotal:      pshTotal,
 		TcpRstTotal:      rstTotal,
 		TcpUrgTotal:      urgTotal,
+		ThreatSummary:    threatSummary,
 	}
 }
