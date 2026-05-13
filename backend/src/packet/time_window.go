@@ -9,6 +9,10 @@ type TimeWindow struct {
 	StartTime time.Time
 	EndTime   time.Time
 	Stats     WindowStats
+
+	// TLS-счётчики для детектора перегрузки
+	ClientHelloCount     float64 // Текущее количество TLS ClientHello в окне
+	ClientHelloCountPrev float64 // Количество в предыдущем окне (заполняется детектором)
 }
 
 type WindowStats struct {
@@ -29,6 +33,9 @@ type WindowStats struct {
 	CntRST int
 	CntPSH int
 	CntURG int
+
+	// TLS-счётчик
+	TLSFlowCount int
 
 	srcIPSet   map[string]struct{}
 	dstIPSet   map[string]struct{}
