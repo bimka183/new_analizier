@@ -7,11 +7,13 @@ import (
 	"analizier/backend/src/service"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -45,7 +47,7 @@ type App struct {
 
 func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
-	router.MaxMultipartMemory = 10 << 20
+	router.MaxMultipartMemory = 512 << 20 // Увеличено до 512 МБ для больших PCAP
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
@@ -86,7 +88,14 @@ func (a *App) SetupRouter() {
 		api.POST("/traffic", a.handlePostTraffic)
 		api.GET("/traffic", a.handleGetTraffic)
 		api.GET("/traffic/:id", a.handleGetTrafficByID)
+
+		// Управление загрузками и историей
 		api.POST("/upload", a.handleUpload)
+		api.GET("/uploads", a.handleGetUploads)
+		api.GET("/uploads/:id", a.handleGetUploadByID)
+		api.DELETE("/uploads/:id", a.handleDeleteUpload)
+		api.GET("/uploads/:id/progress", a.handleGetProgress)
+
 		api.POST("/login", a.handleLogin)
 
 		// Администраторские эндпоинты
@@ -178,27 +187,160 @@ func (a *App) handleUpload(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	path := "files/" + file.Filename
+
+	// Создаём запись загрузки в БД
+	upload := models.Upload{
+		Filename:   file.Filename,
+		UploadedAt: time.Now(),
+		Summary:    "{}",
+	}
+	if err := a.TrafficRepo.CreateUpload(&upload); err != nil {
+		c.JSON(500, gin.H{"error": "Failed to register upload: " + err.Error()})
+		return
+	}
+
+	// Сохраняем файл
+	path := fmt.Sprintf("files/%d_%s", upload.ID, file.Filename)
 	if err = c.SaveUploadedFile(file, path); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	fmt.Printf("Uploading file: %s\n", path)
+	fmt.Printf("Uploading file: %s with upload_id: %d\n", path, upload.ID)
 
-	// Анализируем файл И сохраняем в БД
-	results, err := a.TrafficService.Pipeline(path)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
-		return
-	}
-	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
+	// Предварительно регистрируем канал прогресса, чтобы избежать race condition
+	a.TrafficService.RegisterProgress(upload.ID)
+
+	// Запускаем асинхронный анализ в фоне
+	go func(filename string, uID uint) {
+		a.TrafficService.PipelineAsync(filename, uID)
+	}(path, upload.ID)
 
 	c.JSON(200, gin.H{
-		"status": "analyzed",
-		"data":   results,
-		"total":  len(results),
+		"status":    "processing",
+		"upload_id": upload.ID,
 	})
+}
+
+func (a *App) handleGetProgress(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
+		return
+	}
+	uploadID := uint(id)
+
+	upload, err := a.TrafficRepo.GetUploadByID(uploadID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
+		return
+	}
+
+	// Если анализ уже завершен, сразу отдаем done
+	if upload.FlowCount > 0 || upload.Summary != "{}" {
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Flush()
+
+		doneMsg, _ := json.Marshal(service.ProgressUpdate{Phase: "done", Progress: 100})
+		fmt.Fprintf(c.Writer, "data: %s\n\n", string(doneMsg))
+		c.Writer.Flush()
+		return
+	}
+
+	ch := a.TrafficService.RegisterProgress(uploadID)
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Flush()
+
+	clientGone := c.Writer.CloseNotify()
+
+	for {
+		select {
+		case <-clientGone:
+			return
+		case update := <-ch:
+			data, _ := json.Marshal(update)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
+			c.Writer.Flush()
+			if update.Phase == "done" || update.Phase == "error" {
+				a.TrafficService.UnregisterProgress(uploadID)
+				return
+			}
+		}
+	}
+}
+
+func (a *App) handleGetUploads(c *gin.Context) {
+	uploads, err := a.TrafficRepo.GetUploads()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	type uploadResp struct {
+		models.Upload
+		SummaryRaw json.RawMessage `json:"summary"`
+	}
+	var res []uploadResp
+	for _, u := range uploads {
+		r := uploadResp{Upload: u}
+		if u.Summary != "" {
+			r.SummaryRaw = json.RawMessage(u.Summary)
+		} else {
+			r.SummaryRaw = json.RawMessage("{}")
+		}
+		res = append(res, r)
+	}
+	c.JSON(200, res)
+}
+
+func (a *App) handleGetUploadByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	upload, err := a.TrafficRepo.GetUploadByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
+		return
+	}
+
+	type uploadResp struct {
+		*models.Upload
+		SummaryRaw json.RawMessage `json:"summary"`
+	}
+	r := uploadResp{Upload: upload}
+	if upload.Summary != "" {
+		r.SummaryRaw = json.RawMessage(upload.Summary)
+	} else {
+		r.SummaryRaw = json.RawMessage("{}")
+	}
+	c.JSON(200, r)
+}
+
+func (a *App) handleDeleteUpload(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	if err := a.TrafficRepo.DeleteUpload(uint(id)); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"status": "deleted"})
 }
 
 func (a *App) handlePostTraffic(c *gin.Context) {
@@ -208,13 +350,23 @@ func (a *App) handlePostTraffic(c *gin.Context) {
 		return
 	}
 
-	// Автоматический вывод протокола, если он не передан (например, из старых тестовых скриптов)
+	// Автоматический вывод протокола, если он не передан
 	if traffic.Protocol == "" {
 		if traffic.Flags != "" || traffic.SourcePort != "" || traffic.DestinationPort != "" {
 			traffic.Protocol = "TCP"
 		} else {
 			traffic.Protocol = "Other"
 		}
+	}
+
+	// Преобразуем Timestamp со space в формат ISO 8601 (T и Z)
+	if traffic.Timestamp != "" && strings.Contains(traffic.Timestamp, " ") {
+		traffic.Timestamp = strings.Replace(traffic.Timestamp, " ", "T", 1)
+		if !strings.HasSuffix(traffic.Timestamp, "Z") {
+			traffic.Timestamp += ".000Z"
+		}
+	} else if traffic.Timestamp != "" && !strings.HasSuffix(traffic.Timestamp, "Z") {
+		traffic.Timestamp += ".000Z"
 	}
 
 	// Если передана аномалия "None", то удаляем ее из списка, чтобы не писать в таблицу anomalies
@@ -246,6 +398,14 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 	}
 	offset := (pageInt - 1) * limitInt
 
+	var uploadIDPtr *uint
+	if uidStr := c.DefaultQuery("upload_id", ""); uidStr != "" {
+		if uid, err := strconv.ParseUint(uidStr, 10, 64); err == nil {
+			val := uint(uid)
+			uploadIDPtr = &val
+		}
+	}
+
 	// Собираем фильтры из query params
 	filter := models.TrafficFilter{
 		SourceIP:      c.DefaultQuery("source_ip", ""),
@@ -253,6 +413,8 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		Port:          c.DefaultQuery("port", ""),
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
+		Flags:         c.DefaultQuery("flags", ""),
+		UploadID:      uploadIDPtr,
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)
@@ -392,7 +554,6 @@ func (a *App) runBroadcast() {
 func seedDefaultAdmin(repo repository.TrafficRepository) {
 	_, err := repo.GetUserByUsername("admin")
 	if err != nil {
-		// Пользователь не найден, создаём
 		admin := &models.User{
 			Username: "admin",
 			Password: hashPassword("admin"),
@@ -402,7 +563,6 @@ func seedDefaultAdmin(repo repository.TrafficRepository) {
 		fmt.Println("Default admin user created (admin/admin)")
 	}
 
-	// Создаём обычного пользователя
 	_, err = repo.GetUserByUsername("user")
 	if err != nil {
 		user := &models.User{
@@ -428,7 +588,6 @@ func main() {
 	var db *gorm.DB
 	var err error
 
-	// Повторяем попытки подключения (для docker-compose, когда postgres ещё не запущен полностью)
 	for i := 0; i < 15; i++ {
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 		if err == nil {
@@ -442,11 +601,11 @@ func main() {
 		panic(fmt.Errorf("could not connect to database after retries: %v", err))
 	}
 
-	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{})
+	// Мигрируем таблицы, включая Upload
+	db.AutoMigrate(&models.Upload{}, &models.Traffic{}, &models.Anomaly{}, &models.User{})
 
 	app := NewApp(db)
 
-	// Создаём пользователей по умолчанию
 	seedDefaultAdmin(app.TrafficRepo)
 
 	app.SetupRouter()
