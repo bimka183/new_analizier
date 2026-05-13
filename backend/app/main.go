@@ -193,26 +193,18 @@ func (a *App) handleUpload(c *gin.Context) {
 
 	fmt.Printf("Uploading file: %s\n", path)
 
-	// Создаём запись Upload в БД
-	upload := &models.Upload{
-		Filename:   file.Filename,
-		UploadedAt: time.Now().Format(time.RFC3339),
-		FlowCount:  0,
-		Summary:    "{}",
-	}
-	if err := a.TrafficRepo.CreateUpload(upload); err != nil {
-		c.JSON(500, gin.H{"error": "Failed to create upload record: " + err.Error()})
+	// Анализируем файл И сохраняем в БД
+	results, err := a.TrafficService.Pipeline(path)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
 		return
 	}
+	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
 
-	// Предварительно регистрируем канал прогресса ДО запуска горутины,
-	// чтобы SSE-подписка не пропустила первые события
-	a.TrafficService.RegisterProgress(upload.ID)
-
-	// Возвращаем upload_id сразу, анализ пойдёт асинхронно
 	c.JSON(200, gin.H{
-		"upload_id": upload.ID,
-		"status":    "processing",
+		"status": "analyzed",
+		"data":   results,
+		"total":  len(results),
 	})
 
 	// Запускаем анализ в фоне с небольшой задержкой,
@@ -275,15 +267,6 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		Port:          c.DefaultQuery("port", ""),
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
-		Flags:         c.DefaultQuery("flags", ""),
-	}
-
-	// Фильтр по upload_id (для страницы "Analyze file")
-	if uploadIDStr := c.Query("upload_id"); uploadIDStr != "" {
-		if uid, err := strconv.ParseUint(uploadIDStr, 10, 64); err == nil {
-			uidUint := uint(uid)
-			filter.UploadID = &uidUint
-		}
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)
@@ -600,7 +583,7 @@ func main() {
 		panic(fmt.Errorf("could not connect to database after retries: %v", err))
 	}
 
-	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{}, &models.Upload{})
+	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{})
 
 	app := NewApp(db)
 

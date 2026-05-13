@@ -135,7 +135,11 @@ func main() {
 	filename := os.Args[1]
 
 	p := parser.NewParser()
-	packets := p.Parse(filename)
+	packets, err := p.Parse(filename)
+	if err != nil {
+		fmt.Printf("Error parsing file: %v\n", err)
+		return
+	}
 
 	windows := pkt.SplitIntoWindows(packets, 10*time.Second)
 
