@@ -3,8 +3,6 @@ package service
 import (
 	"analizier/backend/src/detector"
 	"analizier/backend/src/models"
-	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -13,32 +11,11 @@ import (
 	"analizier/backend/src/repository"
 )
 
-// UploadSummary — JSON-структура, сохраняемая в upload.summary
-type UploadSummary struct {
-	Packets          int           `json:"packets"`
-	Flows            int           `json:"flows"`
-	BPSAvg           float64       `json:"bps_avg"`
-	AvgPacketSizeAvg float64       `json:"avg_packet_size_avg"`
-	IATmsAvg         float64       `json:"iat_ms_avg"`
-	ThreatSummary    []ThreatEntry `json:"threat_summary"`
-}
-
-type ThreatEntry struct {
-	Name  string `json:"name"`
-	Value int    `json:"value"`
-}
-
-// ProgressUpdate — структура для SSE-обновлений прогресса
-type ProgressUpdate struct {
-	Phase    string `json:"phase"`
-	Progress int    `json:"progress"`
-}
-
 func MapFlowToTraffic(flow *pkt.FlowInfo) models.Traffic {
 	return models.Traffic{
 		FlowID:          flow.FlowID,
 		Interface:       flow.Interface,
-		Timestamp:       flow.StartTime.Format("2006-01-02T15:04:05.000Z"),
+		Timestamp:       flow.StartTime.Format("2006-01-02 15:04:05"),
 		TrafficVolume:   flow.TrafficVolume,
 		SourceIP:        flow.SourceIP,
 		DestinationIP:   flow.DestinationIP,
@@ -111,8 +88,6 @@ type TrafficService struct {
 	flowDetectors []detector.FlowDetector
 	repo          repository.TrafficRepository
 	broadcast     chan models.Traffic
-	// SSE progress channels: uploadID -> channel
-	progressChannels map[uint]chan ProgressUpdate
 }
 
 func NewTrafficService(
@@ -122,37 +97,10 @@ func NewTrafficService(
 	broadcast chan models.Traffic,
 ) *TrafficService {
 	return &TrafficService{
-		repo:             repo,
-		detectors:        detectors,
-		flowDetectors:    flowDetectors,
-		broadcast:        broadcast,
-		progressChannels: make(map[uint]chan ProgressUpdate),
-	}
-}
-
-// RegisterProgress создаёт канал для SSE-подписки на прогресс загрузки.
-// Если канал уже зарегистрирован (например, из handleUpload), возвращает существующий.
-func (s *TrafficService) RegisterProgress(uploadID uint) chan ProgressUpdate {
-	if existing, ok := s.progressChannels[uploadID]; ok {
-		return existing
-	}
-	ch := make(chan ProgressUpdate, 20)
-	s.progressChannels[uploadID] = ch
-	return ch
-}
-
-// UnregisterProgress удаляет канал прогресса из карты.
-// Канал НЕ закрывается здесь — это делается в sendProgress при фазе done/error.
-func (s *TrafficService) UnregisterProgress(uploadID uint) {
-	delete(s.progressChannels, uploadID)
-}
-
-func (s *TrafficService) sendProgress(uploadID uint, phase string, progress int) {
-	if ch, ok := s.progressChannels[uploadID]; ok {
-		select {
-		case ch <- ProgressUpdate{Phase: phase, Progress: progress}:
-		default:
-		}
+		repo:          repo,
+		detectors:     detectors,
+		flowDetectors: flowDetectors,
+		broadcast:     broadcast,
 	}
 }
 

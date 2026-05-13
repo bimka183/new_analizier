@@ -10,25 +10,7 @@ export function useTrafficDataset() {
       `${apiBaseRef.current}/api/traffic?page=1&limit=10000`
     );
     const result = await response.json();
-    const rows = result.data || [];
-    setAllData(rows);
-    return rows;
-  }, []);
-
-  const fetchWithFilters = useCallback(async (filters = {}) => {
-    const params = new URLSearchParams({ page: "1", limit: "10000" });
-    if (filters.source) params.set("source_ip", filters.source);
-    if (filters.destination) params.set("destination_ip", filters.destination);
-    if (filters.port) params.set("port", filters.port);
-    if (filters.anomaly) params.set("anomaly", filters.anomaly);
-    if (filters.protocol) params.set("protocol", filters.protocol);
-    if (filters.flags) params.set("flags", filters.flags);
-
-    const response = await fetch(
-      `${apiBaseRef.current}/api/traffic?${params}`
-    );
-    const result = await response.json();
-    return result.data || [];
+    setAllData(result.data || []);
   }, []);
 
   useEffect(() => {
@@ -53,5 +35,5 @@ export function useTrafficDataset() {
     return () => ws.close();
   }, []);
 
-  return { allData, apiBaseRef, fetchAllData, fetchWithFilters };
+  return { allData, apiBaseRef, fetchAllData };
 }

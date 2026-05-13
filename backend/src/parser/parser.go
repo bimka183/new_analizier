@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"log"
 	"net"
 
 	pkt "analizier/backend/src/packet"
@@ -75,10 +76,10 @@ func (p *Parser) getProtocol(packet gopacket.Packet) string {
 	}
 }
 
-func (p *Parser) Parse(filename string) ([]pkt.PacketInfo, error) {
+func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 	handle, err := pcap.OpenOffline(filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open pcap file %s: %w", filename, err)
+		log.Fatal(err)
 	}
 	defer handle.Close()
 
@@ -123,5 +124,5 @@ func (p *Parser) Parse(filename string) ([]pkt.PacketInfo, error) {
 		result = append(result, info)
 	}
 
-	return result, nil
+	return result
 }

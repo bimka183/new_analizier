@@ -74,11 +74,8 @@ function TrafficTable({
   sortColumn = null,
   sortDirection = null,
   onSortColumn,
-  enableDetailsForSingleRow = false,
-  onRowClick,
-  initialModalPackets = null,
 }) {
-  const [modalPackets, setModalPackets] = useState(initialModalPackets);
+  const [modalPackets, setModalPackets] = useState(null);
 
   const headerCells = useMemo(() => {
     if (typeof onSortColumn === "function") {
@@ -110,42 +107,28 @@ function TrafficTable({
         <tbody>
           {groups.map((group) => {
             const s = getTrafficGroupSummary(group.packets);
+            const rowClass = s.count > 1 ? "traffic-table__row--grouped" : "";
             const anomalyClass = getAnomalyBadgeClassName(s.anomalyLabel);
-            const hasRowClick = typeof onRowClick === "function";
-            const isDetailsEnabled = enableDetailsForSingleRow || s.count > 1;
-            const isInteractive = hasRowClick || isDetailsEnabled;
-            const rowClass = [
-              s.count > 1 ? "traffic-table__row--grouped" : "",
-              isInteractive ? "traffic-table__row--clickable" : "",
-            ].filter(Boolean).join(" ");
-            const handleClick = () => {
-              if (hasRowClick) {
-                onRowClick(group);
-              } else if (isDetailsEnabled) {
-                setModalPackets(group.packets);
-              }
+            const openDetails = () => {
+              if (s.count > 1) setModalPackets(group.packets);
             };
 
             return (
               <tr
                 key={group.key}
                 className={rowClass}
-                onClick={handleClick}
+                onClick={openDetails}
                 onKeyDown={(e) => {
-                  if (isInteractive && (e.key === "Enter" || e.key === " ")) {
+                  if (s.count > 1 && (e.key === "Enter" || e.key === " ")) {
                     e.preventDefault();
-                    handleClick();
+                    openDetails();
                   }
                 }}
-                tabIndex={isInteractive ? 0 : undefined}
-                role={isInteractive ? "button" : undefined}
+                tabIndex={s.count > 1 ? 0 : undefined}
+                role={s.count > 1 ? "button" : undefined}
                 aria-label={
-                  isInteractive
-                    ? hasRowClick
-                      ? "View session details"
-                      : s.count > 1
-                        ? "Open packet list for this group"
-                        : "Open packet details"
+                  s.count > 1
+                    ? "Open packet list for this group"
                     : undefined
                 }
               >

@@ -7,7 +7,6 @@ import (
 	"analizier/backend/src/service"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -46,7 +45,7 @@ type App struct {
 
 func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
-	router.MaxMultipartMemory = 512 << 20 // 512 MB
+	router.MaxMultipartMemory = 10 << 20
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
@@ -89,12 +88,6 @@ func (a *App) SetupRouter() {
 		api.GET("/traffic/:id", a.handleGetTrafficByID)
 		api.POST("/upload", a.handleUpload)
 		api.POST("/login", a.handleLogin)
-
-		// Upload (история файлов) эндпоинты
-		api.GET("/uploads", a.handleGetUploads)
-		api.GET("/uploads/:id", a.handleGetUploadByID)
-		api.GET("/uploads/:id/progress", a.handleUploadProgress)
-		api.DELETE("/uploads/:id", a.handleDeleteUpload)
 
 		// Администраторские эндпоинты
 		admin := api.Group("/admin")
@@ -206,13 +199,6 @@ func (a *App) handleUpload(c *gin.Context) {
 		"data":   results,
 		"total":  len(results),
 	})
-
-	// Запускаем анализ в фоне с небольшой задержкой,
-	// чтобы фронтенд успел подключиться к SSE
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		a.TrafficService.PipelineAsync(path, upload.ID)
-	}()
 }
 
 func (a *App) handlePostTraffic(c *gin.Context) {
@@ -352,133 +338,6 @@ func (a *App) handleLogin(c *gin.Context) {
 		"role":     user.Role,
 	})
 }
-
-// --- Upload endpoints (история файлов для фронтенда) ---
-
-func (a *App) handleGetUploads(c *gin.Context) {
-	uploads, err := a.TrafficRepo.GetUploads()
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(200, gin.H{"data": uploads})
-}
-
-func (a *App) handleGetUploadByID(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-
-	upload, err := a.TrafficRepo.GetUploadByID(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
-		return
-	}
-
-	// Парсим summary из строки в объект для удобства фронтенда
-	var summaryObj interface{}
-	if err := json.Unmarshal([]byte(upload.Summary), &summaryObj); err == nil {
-		c.JSON(200, gin.H{
-			"id":          upload.ID,
-			"filename":    upload.Filename,
-			"uploaded_at": upload.UploadedAt,
-			"flow_count":  upload.FlowCount,
-			"summary":     summaryObj,
-		})
-	} else {
-		c.JSON(200, gin.H{
-			"id":          upload.ID,
-			"filename":    upload.Filename,
-			"uploaded_at": upload.UploadedAt,
-			"flow_count":  upload.FlowCount,
-			"summary":     upload.Summary,
-		})
-	}
-}
-
-func (a *App) handleDeleteUpload(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-
-	if err := a.TrafficRepo.DeleteUpload(uint(id)); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(200, gin.H{"status": "deleted"})
-}
-
-// handleUploadProgress — SSE endpoint для отслеживания прогресса анализа
-func (a *App) handleUploadProgress(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
-		return
-	}
-
-	uploadID := uint(id)
-
-	// Проверяем, может анализ уже завершён
-	upload, err := a.TrafficRepo.GetUploadByID(uploadID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
-		return
-	}
-
-	// Если upload уже имеет flow_count > 0, значит анализ завершён
-	if upload.FlowCount > 0 {
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Writer.WriteString("data: {\"phase\":\"done\",\"progress\":100}\n\n")
-		c.Writer.Flush()
-		return
-	}
-
-	// Получаем существующий канал прогресса (зарегистрирован в handleUpload)
-	// или создаём новый, если по какой-то причине его нет
-	ch := a.TrafficService.RegisterProgress(uploadID)
-
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("Access-Control-Allow-Origin", "*")
-
-	clientGone := c.Request.Context().Done()
-	flusher, _ := c.Writer.(http.Flusher)
-
-	for {
-		select {
-		case <-clientGone:
-			return
-		case update, ok := <-ch:
-			if !ok {
-				return
-			}
-			data, _ := json.Marshal(update)
-			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-			if flusher != nil {
-				flusher.Flush()
-			}
-			if update.Phase == "done" || update.Phase == "error" {
-				// Чистим запись из карты после завершения
-				a.TrafficService.UnregisterProgress(uploadID)
-				return
-			}
-		}
-	}
-}
-
-// --- WebSocket ---
 
 func (a *App) handleWebSocket(c *gin.Context) {
 	conn, err := a.Upgrader.Upgrade(c.Writer, c.Request, nil)

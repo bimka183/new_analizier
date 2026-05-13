@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ITEMS_PER_PAGE } from "../constants/trafficApp";
 import { buildThreatSummary } from "../utils/threatSummary";
 import { getAnomaly } from "../utils/traffic";
@@ -9,92 +9,19 @@ import {
 } from "../utils/trafficAggregations";
 import { groupTrafficRows } from "../utils/groupTrafficRows";
 import { sortTrafficGroups } from "../utils/trafficTableSort";
-import { useDebounce } from "./useDebounce";
 
 export function useTrafficDashboardView(allData, options = {}) {
-  const { tableBaseOrder = "chronological", fetchFilteredFn } = options;
-  const isServerMode = typeof fetchFilteredFn === "function";
-
+  const { tableBaseOrder = "chronological" } = options;
   const [filterSource, setFilterSource] = useState("");
   const [filterDestination, setFilterDestination] = useState("");
   const [filterPort, setFilterPort] = useState("");
   const [filterAnomaly, setFilterAnomaly] = useState("");
-  const [filterProtocol, setFilterProtocol] = useState("");
-  const [filterFlags, setFilterFlags] = useState([]);
   const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
   const [currentPage, setCurrentPage] = useState(1);
   const [tableSort, setTableSort] = useState({
     column: null,
     direction: null,
   });
-
-  const [serverFilteredData, setServerFilteredData] = useState(null);
-  const fetchIdRef = useRef(0);
-  const prevAllDataLenRef = useRef(allData.length);
-
-  const debouncedSource = useDebounce(filterSource);
-  const debouncedDestination = useDebounce(filterDestination);
-  const debouncedPort = useDebounce(filterPort);
-  const debouncedAnomaly = useDebounce(filterAnomaly);
-  const debouncedProtocol = useDebounce(filterProtocol);
-  const debouncedFlags = useDebounce(filterFlags);
-
-  useEffect(() => {
-    if (!isServerMode) return;
-
-    const hasFilters =
-      debouncedSource || debouncedDestination || debouncedPort ||
-      debouncedAnomaly || debouncedProtocol || debouncedFlags.length > 0;
-
-    if (!hasFilters) {
-      setServerFilteredData(null);
-      return;
-    }
-
-    const id = ++fetchIdRef.current;
-    fetchFilteredFn({
-      source: debouncedSource,
-      destination: debouncedDestination,
-      port: debouncedPort,
-      anomaly: debouncedAnomaly,
-      protocol: debouncedProtocol,
-      flags: debouncedFlags.join(","),
-    }).then((rows) => {
-      if (fetchIdRef.current === id) setServerFilteredData(rows);
-    });
-  }, [
-    isServerMode,
-    fetchFilteredFn,
-    debouncedSource,
-    debouncedDestination,
-    debouncedPort,
-    debouncedAnomaly,
-    debouncedProtocol,
-    debouncedFlags,
-  ]);
-
-  const hasServerFiltersRef = useRef(false);
-  hasServerFiltersRef.current = isServerMode && serverFilteredData !== null;
-
-  useEffect(() => {
-    const grew = allData.length > prevAllDataLenRef.current;
-    prevAllDataLenRef.current = allData.length;
-
-    if (!grew || !hasServerFiltersRef.current) return;
-
-    const id = ++fetchIdRef.current;
-    fetchFilteredFn({
-      source: debouncedSource,
-      destination: debouncedDestination,
-      port: debouncedPort,
-      anomaly: debouncedAnomaly,
-      protocol: debouncedProtocol,
-      flags: debouncedFlags.join(","),
-    }).then((rows) => {
-      if (fetchIdRef.current === id) setServerFilteredData(rows);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allData.length]);
 
   const matchesFilters = useCallback(
     (item) => {
@@ -111,27 +38,19 @@ export function useTrafficDashboardView(allData, options = {}) {
         String(item.destination_port ?? "").includes(portNeedle);
       const anomalyOk =
         filterAnomaly === "" || getAnomaly(item) === filterAnomaly;
-      const protocolOk =
-        filterProtocol === "" || item.protocol === filterProtocol;
-      const itemFlags = String(item.flags ?? "");
-      const flagsOk =
-        filterFlags.length === 0 ||
-        filterFlags.every((f) => itemFlags.includes(f));
-      return srcOk && dstOk && portOk && anomalyOk && protocolOk && flagsOk;
+      return srcOk && dstOk && portOk && anomalyOk;
     },
-    [filterAnomaly, filterDestination, filterFlags, filterPort, filterProtocol, filterSource]
+    [filterAnomaly, filterDestination, filterPort, filterSource]
   );
 
-  const filteredChartData = useMemo(() => {
-    if (isServerMode) {
-      return serverFilteredData !== null ? serverFilteredData : allData;
-    }
-    return allData.filter((item) => matchesFilters(item));
-  }, [isServerMode, serverFilteredData, allData, matchesFilters]);
+  const filteredChartData = useMemo(
+    () => allData.filter((item) => matchesFilters(item)),
+    [allData, matchesFilters]
+  );
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterAnomaly, filterDestination, filterFlags, filterPort, filterProtocol, filterSource, itemsPerPage]);
+  }, [filterAnomaly, filterDestination, filterPort, filterSource, itemsPerPage]);
 
   const trafficTableGroups = useMemo(
     () => groupTrafficRows(filteredChartData),
@@ -197,8 +116,6 @@ export function useTrafficDashboardView(allData, options = {}) {
     setFilterDestination("");
     setFilterPort("");
     setFilterAnomaly("");
-    setFilterProtocol("");
-    setFilterFlags([]);
   }, []);
 
   const cycleTableSort = useCallback((columnKey) => {
@@ -225,10 +142,6 @@ export function useTrafficDashboardView(allData, options = {}) {
     setFilterPort,
     filterAnomaly,
     setFilterAnomaly,
-    filterProtocol,
-    setFilterProtocol,
-    filterFlags,
-    setFilterFlags,
     clearFilters,
     sortColumn: tableSort.column,
     sortDirection: tableSort.direction,

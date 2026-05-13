@@ -57,17 +57,16 @@
   }
 }
 
-.traffic-table__row--clickable {
+.traffic-table__row--grouped {
   cursor: pointer;
-  transition: background-color 0.15s ease;
 
   &:hover {
-    background-color: color-mix(in srgb, var(--main-color) 8%, transparent);
+    filter: brightness(0.97);
   }
 
   &:focus-visible {
     outline: 2px solid var(--main-color);
-    outline-offset: -2px;
+    outline-offset: 2px;
   }
 }
 
@@ -81,7 +80,7 @@
     font-size: 7px;
   }
 
-  .traffic-table__row--clickable {
+  .traffic-table__row--grouped {
     cursor: pointer;
   }
 }

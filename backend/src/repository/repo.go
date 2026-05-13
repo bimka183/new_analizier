@@ -3,7 +3,6 @@ package repository
 import (
 	"analizier/backend/src/models"
 	"fmt"
-	"strings"
 
 	"gorm.io/gorm"
 )
@@ -146,9 +145,6 @@ func (r *postgresTrafficRepo) ResetDatabase() error {
 		return err
 	}
 	if err := r.db.Migrator().DropTable(&models.Traffic{}); err != nil {
-		return err
-	}
-	if err := r.db.Migrator().DropTable(&models.Upload{}); err != nil {
 		return err
 	}
 	// Пересоздаём таблицы

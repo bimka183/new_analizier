@@ -3,42 +3,6 @@ import Button from "../button";
 import { getAnomaly, getAnomalyBadgeClassName } from "../../utils/traffic";
 import "./PacketDetailModal.scss";
 
-function formatMetric(value, fractionDigits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return n.toFixed(fractionDigits);
-}
-
-function getDisplayFlowPackets(item) {
-  const packets = Number(item?.packets);
-  if (Number.isFinite(packets) && packets > 0) return packets;
-  return 1;
-}
-
-function getDisplayDurationSec(item) {
-  const duration = Number(item?.duration_sec);
-  if (Number.isFinite(duration) && duration > 0) return duration;
-  return 0;
-}
-
-function getDisplayAvgPacketSize(item) {
-  const avgSize = Number(item?.avg_packet_size);
-  if (Number.isFinite(avgSize) && avgSize > 0) return avgSize;
-  const flowLength = Number(item?.flow_length);
-  const volume = Number(item?.traffic_volume);
-  const base = Number.isFinite(flowLength) && flowLength > 0 ? flowLength : volume;
-  return Number.isFinite(base) && base > 0 ? base : 0;
-}
-
-function getDisplayBps(item) {
-  const bps = Number(item?.bps);
-  if (Number.isFinite(bps) && bps > 0) return bps;
-  const duration = getDisplayDurationSec(item);
-  const avgSize = getDisplayAvgPacketSize(item);
-  if (duration > 0) return avgSize / duration;
-  return avgSize;
-}
-
 function PacketDetailModal({ open, packets, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -87,11 +51,7 @@ function PacketDetailModal({ open, packets, onClose }) {
                 <th>Dst Port</th>
                 <th>Volume</th>
                 <th>Flags</th>
-                <th>Flow Packets</th>
-                <th>Duration (s)</th>
-                <th>BPS</th>
-                <th>Avg Size</th>
-                <th>IAT (ms)</th>
+                <th>ID</th>
               </tr>
             </thead>
             <tbody>
@@ -116,11 +76,7 @@ function PacketDetailModal({ open, packets, onClose }) {
                     <td>{item.destination_port}</td>
                     <td>{item.traffic_volume}</td>
                     <td>{item.flags}</td>
-                    <td>{getDisplayFlowPackets(item)}</td>
-                    <td>{formatMetric(getDisplayDurationSec(item))}</td>
-                    <td>{formatMetric(getDisplayBps(item))}</td>
-                    <td>{formatMetric(getDisplayAvgPacketSize(item))}</td>
-                    <td>{formatMetric(item.iat_ms)}</td>
+                    <td>{item.id}</td>
                   </tr>
                 );
               })}

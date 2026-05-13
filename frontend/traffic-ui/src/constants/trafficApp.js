@@ -16,9 +16,6 @@ export const EMPTY_ANALYSIS_SUMMARY = {
   flows: 0,
   startTime: "-",
   duration: "-",
-  bpsAvg: 0,
-  avgPacketSizeAvg: 0,
-  iatMsAvg: 0,
 };
 
 export const KNOWN_THREAT_TYPES = [
