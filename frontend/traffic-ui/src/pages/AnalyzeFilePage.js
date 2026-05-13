@@ -1,109 +1,121 @@
 import React from "react";
 import UploadSection from "../components/UploadSection";
-import TrafficCharts from "../components/TrafficCharts";
+import FileHistory from "../components/FileHistory";
 import TrafficPagination from "../components/TrafficPagination";
 import TrafficTable from "../components/TrafficTable";
 import SectionContainer from "../ui/section-container";
-import { useTrafficDashboardView } from "../hooks/useTrafficDashboardView";
-import { createMockTrafficRowsFromFile } from "../utils/mockFileAnalysis";
+import { API_BASE_URL, KNOWN_THREAT_TYPES } from "../constants/trafficApp";
+import { usePcapUpload } from "../hooks/usePcapUpload";
+import { useServerPaginatedTraffic } from "../hooks/useServerPaginatedTraffic";
+import { fetchUploadById } from "../api/uploadsApi";
+import { groupTrafficRows } from "../utils/groupTrafficRows";
 import "./AnalyzeFilePage.scss";
 
-const EMPTY_SUMMARY = {
-  packets: 0,
-  flows: 0,
-  startTime: "—",
-  duration: "—",
-};
+const EMPTY_THREAT_SUMMARY = KNOWN_THREAT_TYPES.map((name) => ({ name, value: 0 }));
+
+function parseSummaryField(raw) {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 function AnalyzeFilePage() {
-  const [file, setFile] = React.useState(null);
-  const [uploadStatus, setUploadStatus] = React.useState("idle");
-  const [analysisSummary, setAnalysisSummary] = React.useState(EMPTY_SUMMARY);
-  const [isReportAvailable, setIsReportAvailable] = React.useState(false);
-  const [fileRows, setFileRows] = React.useState([]);
+  const apiBaseRef = React.useRef(API_BASE_URL);
+  const [activeUploadId, setActiveUploadId] = React.useState(null);
+  const [historyKey, setHistoryKey] = React.useState(0);
+  const [threatSummary, setThreatSummary] = React.useState(EMPTY_THREAT_SUMMARY);
 
   const {
-    sortColumn,
-    sortDirection,
-    cycleTableSort,
-    itemsPerPage,
-    setItemsPerPage,
+    pageRows,
+    totalRows,
+    totalPages,
     currentPage,
     setCurrentPage,
-    filteredChartData,
-    totalPages,
-    trafficTableGroups,
-    paginatedTableGroups,
-    trafficByIP,
-    anomaliesCount,
-    trafficByTime,
-    threatSummary,
-  } = useTrafficDashboardView(fileRows, { tableBaseOrder: "chronological" });
+    itemsPerPage,
+    setItemsPerPage,
+    loading: tableLoading,
+    goNext,
+    goPrev,
+  } = useServerPaginatedTraffic(activeUploadId);
 
-  const timersRef = React.useRef([]);
-
-  React.useEffect(
-    () => () => {
-      timersRef.current.forEach((timerId) => clearTimeout(timerId));
-      timersRef.current = [];
+  const {
+    file,
+    uploadStatus,
+    uploadProgress,
+    processingProgress,
+    processingPhase,
+    analysisSummary,
+    isReportAvailable,
+    handleChooseFile: choosePcapFile,
+    handleRemoveFile: removePcapFile,
+    handleUpload: uploadPcapFile,
+  } = usePcapUpload({
+    apiBaseRef,
+    onUploadComplete: (uploadId, summary) => {
+      if (uploadId) {
+        setActiveUploadId(uploadId);
+        setHistoryKey((k) => k + 1);
+        applyThreatSummary(summary);
+      } else {
+        setActiveUploadId(null);
+        setThreatSummary(EMPTY_THREAT_SUMMARY);
+      }
     },
-    []
-  );
+  });
 
-  const clearPendingTimers = () => {
-    timersRef.current.forEach((timerId) => clearTimeout(timerId));
-    timersRef.current = [];
-  };
+  const applyThreatSummary = React.useCallback((summary) => {
+    const ts = summary?.threat_summary;
+    if (Array.isArray(ts) && ts.length > 0) {
+      setThreatSummary(ts);
+    } else {
+      setThreatSummary(EMPTY_THREAT_SUMMARY);
+    }
+  }, []);
 
   const handleChooseFile = (nextFile) => {
-    clearPendingTimers();
-    setFile(nextFile);
-    setUploadStatus("idle");
-    setIsReportAvailable(false);
-    setFileRows([]);
-    setAnalysisSummary(EMPTY_SUMMARY);
+    setActiveUploadId(null);
+    setThreatSummary(EMPTY_THREAT_SUMMARY);
+    choosePcapFile(nextFile);
   };
 
   const handleRemoveFile = () => {
-    clearPendingTimers();
-    setFile(null);
-    setUploadStatus("idle");
-    setIsReportAvailable(false);
-    setFileRows([]);
-    setAnalysisSummary(EMPTY_SUMMARY);
+    setActiveUploadId(null);
+    setThreatSummary(EMPTY_THREAT_SUMMARY);
+    removePcapFile();
   };
 
-  const handleUpload = () => {
-    if (!file) return;
-
-    clearPendingTimers();
-    setUploadStatus("uploading");
-    setIsReportAvailable(false);
-    setFileRows([]);
-    setAnalysisSummary(EMPTY_SUMMARY);
-
-    const mockRows = createMockTrafficRowsFromFile(file);
-    const uniqueFlows = new Set(mockRows.map((item) => item.flow_id)).size;
-    const startedAt = mockRows[0]?.timestamp || "—";
-
-    const processingTimer = setTimeout(() => {
-      setUploadStatus("processing");
-    }, 450);
-
-    const completionTimer = setTimeout(() => {
-      setFileRows(mockRows);
-      setAnalysisSummary({
-        packets: mockRows.length,
-        flows: uniqueFlows,
-        startTime: startedAt,
-        duration: `${Math.max(1, Math.ceil(mockRows.length / 5))} min`,
-      });
-      setUploadStatus("completed");
-      setIsReportAvailable(true);
-    }, 1200);
-
-    timersRef.current = [processingTimer, completionTimer];
+  const handleUpload = async () => {
+    setActiveUploadId(null);
+    setThreatSummary(EMPTY_THREAT_SUMMARY);
+    await uploadPcapFile();
   };
+
+  const handleSelectFromHistory = React.useCallback(
+    async (uploadId) => {
+      if (uploadId) {
+        setActiveUploadId(uploadId);
+        try {
+          const upload = await fetchUploadById(uploadId);
+          const summary = parseSummaryField(upload.summary);
+          applyThreatSummary(summary);
+        } catch {
+          setThreatSummary(EMPTY_THREAT_SUMMARY);
+        }
+      } else {
+        setActiveUploadId(null);
+        setThreatSummary(EMPTY_THREAT_SUMMARY);
+      }
+    },
+    [applyThreatSummary]
+  );
+
+  const tableGroups = React.useMemo(() => groupTrafficRows(pageRows), [pageRows]);
+
+  const hasData = activeUploadId && totalRows > 0;
 
   return (
     <section className="analyze-file-page">
@@ -117,9 +129,12 @@ function AnalyzeFilePage() {
         <UploadSection
           file={file}
           uploadStatus={uploadStatus}
+          uploadProgress={uploadProgress}
+          processingProgress={processingProgress}
+          processingPhase={processingPhase}
           analysisSummary={analysisSummary}
           threatSummary={threatSummary}
-          threatRowsCount={filteredChartData.length}
+          threatRowsCount={totalRows}
           onChooseFile={handleChooseFile}
           onRemoveFile={handleRemoveFile}
           onUpload={handleUpload}
@@ -127,39 +142,39 @@ function AnalyzeFilePage() {
         />
       </SectionContainer>
 
-      {fileRows.length > 0 ? (
+      <SectionContainer className="analyze-file-page__history-shell">
+        <FileHistory
+          key={historyKey}
+          onSelectUpload={handleSelectFromHistory}
+          activeUploadId={activeUploadId}
+        />
+      </SectionContainer>
+
+      {hasData ? (
         <>
-          <TrafficCharts
-            trafficByIP={trafficByIP}
-            anomaliesCount={anomaliesCount}
-            trafficByTime={trafficByTime}
-          />
           <section className="app__traffic-section" aria-labelledby="analyze-file-traffic-heading">
             <h3 id="analyze-file-traffic-heading" className="app__section-title">
-              File traffic log
+              Traffic log ({totalRows.toLocaleString()} flows)
             </h3>
             <div className="app__controls">
-              <TrafficTable
-                groups={paginatedTableGroups}
-                sortColumn={sortColumn}
-                sortDirection={sortDirection}
-                onSortColumn={cycleTableSort}
-              />
+              <TrafficTable groups={tableGroups} enableDetailsForSingleRow />
               <TrafficPagination
                 currentPage={currentPage}
-                totalPages={totalPages || 1}
-                totalRows={trafficTableGroups.length}
+                totalPages={totalPages}
+                totalRows={totalRows}
                 itemsPerPage={itemsPerPage}
                 onItemsPerPageChange={setItemsPerPage}
-                onPrev={() => setCurrentPage((page) => page - 1)}
-                onNext={() => setCurrentPage((page) => page + 1)}
+                onPrev={goPrev}
+                onNext={goNext}
               />
             </div>
           </section>
         </>
+      ) : activeUploadId && tableLoading ? (
+        <div className="analyze-file-page__placeholder">Loading traffic data...</div>
       ) : (
         <div className="analyze-file-page__placeholder">
-          Select a file and run analysis to see file-specific tables and charts.
+          Select a file and run analysis, or pick a previous result from history.
         </div>
       )}
     </section>

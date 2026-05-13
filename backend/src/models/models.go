@@ -15,20 +15,22 @@ type Traffic struct {
 	TrafficVolume   int    `json:"traffic_volume"`
 	Flags           string `json:"flags"`
 	// FlowStats fields
-	Packets          int       `json:"packets"`
-	FlowLength       int       `json:"flow_length"`
-	AvgPacketSize    float64   `json:"avg_packet_size"`
-	StdDevPacketSize float64   `json:"std_dev_packet_size"`
-	BPS              float64   `json:"bps"`
-	IATms            float64   `json:"iat_ms"`
-	DurationSec      float64   `json:"duration_sec"`
-	CntSYN           int       `json:"cnt_syn"`
-	CntACK           int       `json:"cnt_ack"`
-	CntFIN           int       `json:"cnt_fin"`
-	CntPSH           int       `json:"cnt_psh"`
-	CntRST           int       `json:"cnt_rst"`
-	CntURG           int       `json:"cnt_urg"`
-	Anomalies        []Anomaly `gorm:"foreignKey:TrafficID" json:"anomalies"`
+	Packets          int     `json:"packets"`
+	FlowLength       int     `json:"flow_length"`
+	AvgPacketSize    float64 `json:"avg_packet_size"`
+	StdDevPacketSize float64 `json:"std_dev_packet_size"`
+	BPS              float64 `json:"bps"`
+	IATms            float64 `json:"iat_ms"`
+	DurationSec      float64 `json:"duration_sec"`
+	CntSYN           int     `json:"cnt_syn"`
+	CntACK           int     `json:"cnt_ack"`
+	CntFIN           int     `json:"cnt_fin"`
+	CntPSH           int     `json:"cnt_psh"`
+	CntRST           int     `json:"cnt_rst"`
+	CntURG           int     `json:"cnt_urg"`
+	// Связь с Upload (файлом)
+	UploadID  *uint     `json:"upload_id" gorm:"index"`
+	Anomalies []Anomaly `gorm:"foreignKey:TrafficID" json:"anomalies"`
 }
 
 type TrafficDB struct {
@@ -38,6 +40,15 @@ type Anomaly struct {
 	ID          uint   `gorm:"primarykey" json:"id"`
 	TrafficID   uint   `json:"traffic_id"`
 	AnomalyType string `json:"anomaly_type"`
+}
+
+// Upload — запись о загруженном файле для истории анализа
+type Upload struct {
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	Filename   string `json:"filename"`
+	UploadedAt string `json:"uploaded_at"`
+	FlowCount  int    `json:"flow_count"`
+	Summary    string `json:"summary" gorm:"type:text"`
 }
 
 // User model for role-based access (user/admin)
@@ -55,4 +66,6 @@ type TrafficFilter struct {
 	Port          string
 	AnomalyType   string
 	Protocol      string
+	Flags         string
+	UploadID      *uint
 }

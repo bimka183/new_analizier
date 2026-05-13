@@ -7,6 +7,7 @@ import (
 	"analizier/backend/src/service"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -45,7 +46,7 @@ type App struct {
 
 func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
-	router.MaxMultipartMemory = 10 << 20
+	router.MaxMultipartMemory = 512 << 20 // 512 MB
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
@@ -88,6 +89,12 @@ func (a *App) SetupRouter() {
 		api.GET("/traffic/:id", a.handleGetTrafficByID)
 		api.POST("/upload", a.handleUpload)
 		api.POST("/login", a.handleLogin)
+
+		// Upload (история файлов) эндпоинты
+		api.GET("/uploads", a.handleGetUploads)
+		api.GET("/uploads/:id", a.handleGetUploadByID)
+		api.GET("/uploads/:id/progress", a.handleUploadProgress)
+		api.DELETE("/uploads/:id", a.handleDeleteUpload)
 
 		// Администраторские эндпоинты
 		admin := api.Group("/admin")
@@ -186,19 +193,34 @@ func (a *App) handleUpload(c *gin.Context) {
 
 	fmt.Printf("Uploading file: %s\n", path)
 
-	// Анализируем файл И сохраняем в БД
-	results, err := a.TrafficService.Pipeline(path)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
+	// Создаём запись Upload в БД
+	upload := &models.Upload{
+		Filename:   file.Filename,
+		UploadedAt: time.Now().Format(time.RFC3339),
+		FlowCount:  0,
+		Summary:    "{}",
+	}
+	if err := a.TrafficRepo.CreateUpload(upload); err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create upload record: " + err.Error()})
 		return
 	}
-	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
 
+	// Предварительно регистрируем канал прогресса ДО запуска горутины,
+	// чтобы SSE-подписка не пропустила первые события
+	a.TrafficService.RegisterProgress(upload.ID)
+
+	// Возвращаем upload_id сразу, анализ пойдёт асинхронно
 	c.JSON(200, gin.H{
-		"status": "analyzed",
-		"data":   results,
-		"total":  len(results),
+		"upload_id": upload.ID,
+		"status":    "processing",
 	})
+
+	// Запускаем анализ в фоне с небольшой задержкой,
+	// чтобы фронтенд успел подключиться к SSE
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		a.TrafficService.PipelineAsync(path, upload.ID)
+	}()
 }
 
 func (a *App) handlePostTraffic(c *gin.Context) {
@@ -253,6 +275,15 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		Port:          c.DefaultQuery("port", ""),
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
+		Flags:         c.DefaultQuery("flags", ""),
+	}
+
+	// Фильтр по upload_id (для страницы "Analyze file")
+	if uploadIDStr := c.Query("upload_id"); uploadIDStr != "" {
+		if uid, err := strconv.ParseUint(uploadIDStr, 10, 64); err == nil {
+			uidUint := uint(uid)
+			filter.UploadID = &uidUint
+		}
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)
@@ -338,6 +369,133 @@ func (a *App) handleLogin(c *gin.Context) {
 		"role":     user.Role,
 	})
 }
+
+// --- Upload endpoints (история файлов для фронтенда) ---
+
+func (a *App) handleGetUploads(c *gin.Context) {
+	uploads, err := a.TrafficRepo.GetUploads()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"data": uploads})
+}
+
+func (a *App) handleGetUploadByID(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	upload, err := a.TrafficRepo.GetUploadByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
+		return
+	}
+
+	// Парсим summary из строки в объект для удобства фронтенда
+	var summaryObj interface{}
+	if err := json.Unmarshal([]byte(upload.Summary), &summaryObj); err == nil {
+		c.JSON(200, gin.H{
+			"id":          upload.ID,
+			"filename":    upload.Filename,
+			"uploaded_at": upload.UploadedAt,
+			"flow_count":  upload.FlowCount,
+			"summary":     summaryObj,
+		})
+	} else {
+		c.JSON(200, gin.H{
+			"id":          upload.ID,
+			"filename":    upload.Filename,
+			"uploaded_at": upload.UploadedAt,
+			"flow_count":  upload.FlowCount,
+			"summary":     upload.Summary,
+		})
+	}
+}
+
+func (a *App) handleDeleteUpload(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	if err := a.TrafficRepo.DeleteUpload(uint(id)); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"status": "deleted"})
+}
+
+// handleUploadProgress — SSE endpoint для отслеживания прогресса анализа
+func (a *App) handleUploadProgress(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	uploadID := uint(id)
+
+	// Проверяем, может анализ уже завершён
+	upload, err := a.TrafficRepo.GetUploadByID(uploadID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
+		return
+	}
+
+	// Если upload уже имеет flow_count > 0, значит анализ завершён
+	if upload.FlowCount > 0 {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Writer.WriteString("data: {\"phase\":\"done\",\"progress\":100}\n\n")
+		c.Writer.Flush()
+		return
+	}
+
+	// Получаем существующий канал прогресса (зарегистрирован в handleUpload)
+	// или создаём новый, если по какой-то причине его нет
+	ch := a.TrafficService.RegisterProgress(uploadID)
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Access-Control-Allow-Origin", "*")
+
+	clientGone := c.Request.Context().Done()
+	flusher, _ := c.Writer.(http.Flusher)
+
+	for {
+		select {
+		case <-clientGone:
+			return
+		case update, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(update)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			if update.Phase == "done" || update.Phase == "error" {
+				// Чистим запись из карты после завершения
+				a.TrafficService.UnregisterProgress(uploadID)
+				return
+			}
+		}
+	}
+}
+
+// --- WebSocket ---
 
 func (a *App) handleWebSocket(c *gin.Context) {
 	conn, err := a.Upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -442,7 +600,7 @@ func main() {
 		panic(fmt.Errorf("could not connect to database after retries: %v", err))
 	}
 
-	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{})
+	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{}, &models.Upload{})
 
 	app := NewApp(db)
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"analizier/backend/src/models"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -21,6 +22,12 @@ type TrafficRepository interface {
 	// Методы для пользователей
 	CreateUser(user *models.User) error
 	GetUserByUsername(username string) (*models.User, error)
+	// Методы для Upload (история файлов)
+	CreateUpload(upload *models.Upload) error
+	GetUploads() ([]models.Upload, error)
+	GetUploadByID(id uint) (*models.Upload, error)
+	UpdateUpload(upload *models.Upload) error
+	DeleteUpload(id uint) error
 }
 
 type postgresTrafficRepo struct {
@@ -93,6 +100,19 @@ func (r *postgresTrafficRepo) applyFilters(query *gorm.DB, filter models.Traffic
 			query = query.Where("id IN (SELECT traffic_id FROM anomalies WHERE anomaly_type = ?)", filter.AnomalyType)
 		}
 	}
+	if filter.Flags != "" {
+		// Поддержка фильтрации по флагам (может быть несколько через запятую)
+		flags := strings.Split(filter.Flags, ",")
+		for _, flag := range flags {
+			flag = strings.TrimSpace(flag)
+			if flag != "" {
+				query = query.Where("flags LIKE ?", "%"+flag+"%")
+			}
+		}
+	}
+	if filter.UploadID != nil {
+		query = query.Where("upload_id = ?", *filter.UploadID)
+	}
 	return query
 }
 
@@ -147,8 +167,11 @@ func (r *postgresTrafficRepo) ResetDatabase() error {
 	if err := r.db.Migrator().DropTable(&models.Traffic{}); err != nil {
 		return err
 	}
+	if err := r.db.Migrator().DropTable(&models.Upload{}); err != nil {
+		return err
+	}
 	// Пересоздаём таблицы
-	if err := r.db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}); err != nil {
+	if err := r.db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.Upload{}); err != nil {
 		return err
 	}
 	return nil
@@ -167,4 +190,45 @@ func (r *postgresTrafficRepo) GetUserByUsername(username string) (*models.User, 
 		return nil, tx.Error
 	}
 	return &user, nil
+}
+
+// --- Upload CRUD ---
+
+func (r *postgresTrafficRepo) CreateUpload(upload *models.Upload) error {
+	return r.db.Create(upload).Error
+}
+
+func (r *postgresTrafficRepo) GetUploads() ([]models.Upload, error) {
+	var uploads []models.Upload
+	tx := r.db.Order("id DESC").Find(&uploads)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	return uploads, nil
+}
+
+func (r *postgresTrafficRepo) GetUploadByID(id uint) (*models.Upload, error) {
+	var upload models.Upload
+	tx := r.db.First(&upload, id)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	return &upload, nil
+}
+
+func (r *postgresTrafficRepo) UpdateUpload(upload *models.Upload) error {
+	return r.db.Save(upload).Error
+}
+
+func (r *postgresTrafficRepo) DeleteUpload(id uint) error {
+	// Удаляем аномалии для трафика этого upload'а
+	if err := r.db.Exec("DELETE FROM anomalies WHERE traffic_id IN (SELECT id FROM traffics WHERE upload_id = ?)", id).Error; err != nil {
+		return err
+	}
+	// Удаляем трафик этого upload'а
+	if err := r.db.Where("upload_id = ?", id).Delete(&models.Traffic{}).Error; err != nil {
+		return err
+	}
+	// Удаляем сам upload
+	return r.db.Delete(&models.Upload{}, id).Error
 }

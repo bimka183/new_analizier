@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import TrafficPagination from "./components/TrafficPagination";
 import TrafficTable from "./components/TrafficTable";
 import TrafficCharts from "./components/TrafficCharts";
@@ -12,27 +12,16 @@ import SessionsPage from "./pages/SessionsPage";
 import AnalyzeFilePage from "./pages/AnalyzeFilePage";
 import { useTrafficDataset } from "./hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "./hooks/useTrafficDashboardView";
+import { getTrafficGroupSummary } from "./utils/groupTrafficRows";
 import "./App.scss";
 
 function App() {
-  const location = useLocation();
-  const tableBaseOrder = location.pathname.startsWith("/sessions")
-    ? "newest"
-    : "chronological";
+  const navigate = useNavigate();
 
   const [processedFilesCount] = React.useState(0);
-  const { allData } = useTrafficDataset();
+  const { allData, fetchWithFilters } = useTrafficDataset();
 
   const {
-    filterSource,
-    setFilterSource,
-    filterDestination,
-    setFilterDestination,
-    filterPort,
-    setFilterPort,
-    filterAnomaly,
-    setFilterAnomaly,
-    clearFilters,
     sortColumn,
     sortDirection,
     cycleTableSort,
@@ -48,8 +37,26 @@ function App() {
     anomaliesCount,
     trafficByTime,
     threatSummary,
-  } = useTrafficDashboardView(allData, { tableBaseOrder });
+  } = useTrafficDashboardView(allData, { fetchFilteredFn: fetchWithFilters });
   const systemStatus = "OK";
+
+  const handleDashboardRowClick = React.useCallback((group) => {
+    const s = getTrafficGroupSummary(group.packets);
+
+    const initialFilters = {
+      source: s.sourceLabel && !s.sourceLabel.startsWith("Group") ? s.sourceLabel : "",
+      destination: s.destinationLabel && s.destinationLabel !== "—" ? s.destinationLabel : "",
+      protocol: s.protocolLabel && s.protocolLabel !== "—" ? s.protocolLabel : "",
+      anomaly:
+        s.anomalyLabel && s.anomalyLabel !== "Mixed" && s.anomalyLabel !== "None"
+          ? s.anomalyLabel
+          : "",
+    };
+
+    navigate("/sessions", {
+      state: { initialFilters, autoDetailPackets: group.packets },
+    });
+  }, [navigate]);
 
   return (
     <div className="app-shell">
@@ -101,6 +108,7 @@ function App() {
                         sortColumn={sortColumn}
                         sortDirection={sortDirection}
                         onSortColumn={cycleTableSort}
+                        onRowClick={handleDashboardRowClick}
                       />
                       <TrafficPagination
                         currentPage={currentPage}
@@ -120,26 +128,8 @@ function App() {
               path="/sessions"
               element={
                 <SessionsPage
-                  paginatedTableGroups={paginatedTableGroups}
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSortColumn={cycleTableSort}
-                  filterSource={filterSource}
-                  filterDestination={filterDestination}
-                  filterPort={filterPort}
-                  filterAnomaly={filterAnomaly}
-                  onFilterSourceChange={setFilterSource}
-                  onFilterDestinationChange={setFilterDestination}
-                  onFilterPortChange={setFilterPort}
-                  onFilterAnomalyChange={setFilterAnomaly}
-                  onClearFilters={clearFilters}
-                  currentPage={currentPage}
-                  totalPages={totalPages || 1}
-                  totalRows={trafficTableGroups.length}
-                  itemsPerPage={itemsPerPage}
-                  onItemsPerPageChange={setItemsPerPage}
-                  onPrevPage={() => setCurrentPage((page) => page - 1)}
-                  onNextPage={() => setCurrentPage((page) => page + 1)}
+                  allData={allData}
+                  fetchWithFilters={fetchWithFilters}
                 />
               }
             />
