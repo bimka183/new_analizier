@@ -124,6 +124,16 @@ func ExportWindowsToCSV(filename string, windows []pkt.TimeWindow) error {
 	return nil
 }
 
+func flowIntersectsTimeWindow(f *pkt.FlowInfo, w pkt.TimeWindow) bool {
+	for _, p := range f.Packets {
+		t := p.Timestamp
+		if !t.Before(w.StartTime) && t.Before(w.EndTime) {
+			return true
+		}
+	}
+	return false
+}
+
 // ------------------------------------------------------------
 // Основная функция
 // ------------------------------------------------------------
@@ -206,9 +216,7 @@ func main() {
 			if len(flow.Packets) == 0 {
 				continue
 			}
-			firstPkt := flow.Packets[0].Timestamp
-			if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
-				(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
+			if flowIntersectsTimeWindow(flow, win) {
 				dosFlowIDs[flowID] = true
 			}
 		}

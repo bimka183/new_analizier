@@ -88,6 +88,10 @@ func ewmaBPSLogFlush() {
 	ewmaBPSLog.lastPrint = time.Now()
 }
 
+func ddosDetectLogf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "DDoSDetector: "+format+"\n", args...)
+}
+
 type DDoSDetector struct{}
 
 func (d *DDoSDetector) Name() string {
@@ -202,6 +206,19 @@ func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []pa
 			}
 		}
 		if rstSynLegacy || rstSynAdaptive {
+			sign := "RST/SYN"
+			switch {
+			case rstSynLegacy && rstSynAdaptive:
+				sign += " legacy+adaptive"
+			case rstSynLegacy:
+				sign += " legacy"
+			default:
+				sign += " adaptive"
+			}
+			ddosDetectLogf("угроза окна %s–%s признак=%s BPS=%.0f SYN=%d RST=%d",
+				windowElement.StartTime.UTC().Format(time.RFC3339),
+				windowElement.EndTime.UTC().Format(time.RFC3339),
+				sign, stats.BPS, stats.CntSYN, stats.CntRST)
 			anomalous = append(anomalous, windowElement)
 			continue
 		}
@@ -226,6 +243,19 @@ func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []pa
 			}
 		}
 		if portsLegacy || portsAdaptive {
+			sign := "unique_dst_ports"
+			switch {
+			case portsLegacy && portsAdaptive:
+				sign += " legacy+adaptive"
+			case portsLegacy:
+				sign += " legacy"
+			default:
+				sign += " adaptive"
+			}
+			ddosDetectLogf("угроза окна %s–%s признак=%s BPS=%.0f SYN=%d RST=%d",
+				windowElement.StartTime.UTC().Format(time.RFC3339),
+				windowElement.EndTime.UTC().Format(time.RFC3339),
+				sign, stats.BPS, stats.CntSYN, stats.CntRST)
 			anomalous = append(anomalous, windowElement)
 			continue
 		}
@@ -259,6 +289,19 @@ func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []pa
 				}
 			}
 			if avgLegacy || avgAdaptive {
+				sign := "rolling_avg_unique_dst_ports"
+				switch {
+				case avgLegacy && avgAdaptive:
+					sign += " legacy+adaptive"
+				case avgLegacy:
+					sign += " legacy"
+				default:
+					sign += " adaptive"
+				}
+				ddosDetectLogf("угроза окна %s–%s признак=%s BPS=%.0f SYN=%d RST=%d",
+					windowElement.StartTime.UTC().Format(time.RFC3339),
+					windowElement.EndTime.UTC().Format(time.RFC3339),
+					sign, stats.BPS, stats.CntSYN, stats.CntRST)
 				anomalous = append(anomalous, windowElement)
 				continue
 			}
@@ -305,6 +348,19 @@ func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []pa
 
 		if synSpikeLegacy || synAdaptive {
 			if synPerIP > 0 && synPerIP < synPerIPThreshold {
+				sign := "SYN_flood"
+				switch {
+				case synSpikeLegacy && synAdaptive:
+					sign += " legacy+adaptive"
+				case synSpikeLegacy:
+					sign += " legacy"
+				default:
+					sign += " adaptive"
+				}
+				ddosDetectLogf("угроза окна %s–%s признак=%s BPS=%.0f SYN=%d RST=%d",
+					windowElement.StartTime.UTC().Format(time.RFC3339),
+					windowElement.EndTime.UTC().Format(time.RFC3339),
+					sign, stats.BPS, stats.CntSYN, stats.CntRST)
 				anomalous = append(anomalous, windowElement)
 				continue
 			}
@@ -360,7 +416,7 @@ func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows
 	for src, victim := range srcSingleDst {
 		victimCounts[victim] = append(victimCounts[victim], src)
 	}
-	for _, srcs := range victimCounts {
+	for victim, srcs := range victimCounts {
 		if len(srcs) < minAmplificationActors {
 			continue
 		}
@@ -373,6 +429,8 @@ func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows
 		if udpAmp < minAmplificationUDP {
 			continue
 		}
+		ddosDetectLogf("агрегация по источнику — amplification/reflection victim=%s источников=%d udp_на_порты_усилителя=%d",
+			victim, len(srcs), udpAmp)
 		for _, src := range srcs {
 			addFlowsForSource(flows, src, actorFlows)
 		}
@@ -396,6 +454,7 @@ func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows
 				continue
 			}
 			if zm, ok := madHighScore(ppsAll[i], others, madCoeff); ok && zm > madZStrong {
+				ddosDetectLogf("агрегация по источнику — MAD PPS выброс source_ip=%s zm=%.2f", sources[i].SourceIP, zm)
 				addFlowsForSource(flows, sources[i].SourceIP, actorFlows)
 			}
 		}
@@ -417,6 +476,9 @@ func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows
 				continue
 			}
 			if flowIntersectsWindow(f, w) {
+				ddosDetectLogf("угроза окна %s–%s признак=агрегация_источник пересечение_с_акторами BPS=%.0f SYN=%d RST=%d",
+					w.StartTime.UTC().Format(time.RFC3339), w.EndTime.UTC().Format(time.RFC3339),
+					st.BPS, st.CntSYN, st.CntRST)
 				out = append(out, w)
 				break
 			}
