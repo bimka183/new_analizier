@@ -1,9 +1,9 @@
 package main
 
 import (
+	"analizier/backend/src/detector"
+	pkt "analizier/backend/src/packet"
 	"analizier/backend/src/parser"
-	"analizier/src/detector"
-	pkt "analizier/src/packet"
 	"encoding/csv"
 	"fmt"
 	"net"
