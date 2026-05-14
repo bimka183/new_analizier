@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -17,6 +18,16 @@ const minStatSample = 5
 
 // ewmaChangeLogAbsEps — игнорировать дробный шум при логировании приращения EWMA по BPS.
 const ewmaChangeLogAbsEps = 1e-3
+
+// Пороги по report_sourcestats.pdf §3.3 (amplification) и §4 (MAD среди источников).
+const (
+	minAmplificationActors = 10
+	minAmplificationUDP    = 5 // минимум источников с UDP-потоком на порт-усилитель
+)
+
+var amplificationUDPPorts = map[int]struct{}{
+	53: {}, 123: {}, 11211: {}, 389: {}, 1900: {},
+}
 
 var ewmaBPSLog struct {
 	sync.Mutex
@@ -89,13 +100,24 @@ func (d *DDoSDetector) Analyze(stats packet.FlowStats) DetectionResult {
 	return DetectionResult{IsAnomaly: false}
 }
 
-// AnalyzeWindows – основной метод детектора, анализирует временные окна.
-// Возвращает список окон, признанных аномальными.
-//
-// Статистические пороги (|z|>3, Tukey 1.5·IQR, MAD z>3.5, min выборки 5, для BPS z — 10)
-// согласованы с ТЗ по статистическим методам; абсолютные пороги BPS/RST/SYN/портов —
-// legacy-запас при короткой истории (в PDF не зафиксированы).
+// AnalyzeWindows — обёртка без потоков (тесты, CLI); per-source правила не применяются.
 func (d *DDoSDetector) AnalyzeWindows(windows []packet.TimeWindow) []packet.TimeWindow {
+	return d.AnalyzeWindowsWithFlows(windows, nil, 0)
+}
+
+// AnalyzeWindowsWithFlows анализирует окна и при наличии проанализированных потоков
+// дополняет результат признаками по агрегации источника (SourceStats), см. report_sourcestats §3.3.
+func (d *DDoSDetector) AnalyzeWindowsWithFlows(windows []packet.TimeWindow, flows map[string]*packet.FlowInfo, captureDuration time.Duration) []packet.TimeWindow {
+	base := d.analyzeWindowsFromStats(windows)
+	if flows == nil || captureDuration <= 0 || len(windows) == 0 {
+		return base
+	}
+	extra := d.sourceAugmentedWindows(windows, flows, captureDuration)
+	return unionTimeWindows(base, extra)
+}
+
+// analyzeWindowsFromStats — прежняя логика только по WindowStats (скользящая история окон).
+func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []packet.TimeWindow {
 	totalRST := totalRST(windows)
 	const (
 		bpsThreshold      = 1_000_000
@@ -290,6 +312,197 @@ func (d *DDoSDetector) AnalyzeWindows(windows []packet.TimeWindow) []packet.Time
 	}
 	ewmaBPSLogFlush()
 	return anomalous
+}
+
+func unionTimeWindows(a, b []packet.TimeWindow) []packet.TimeWindow {
+	seen := make(map[int64]struct{})
+	out := make([]packet.TimeWindow, 0, len(a)+len(b))
+	for _, w := range a {
+		k := w.StartTime.UnixNano()
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, w)
+	}
+	for _, w := range b {
+		k := w.StartTime.UnixNano()
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, w)
+	}
+	return out
+}
+
+// sourceAugmentedWindows — reflection/amplification (упрощённо) и MAD по PPS среди источников;
+// помечает окна с высоким BPS или SYN, пересекающиеся по времени с «акторами».
+func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows map[string]*packet.FlowInfo, captureDuration time.Duration) []packet.TimeWindow {
+	const (
+		bpsGate    = 1_000_000
+		synGate    = 1000
+		madCoeff   = 0.6745
+		madZStrong = 3.5
+		minSources = 10 // MinSourcesForAdaptation из PDF (агрегация по источникам)
+	)
+
+	sources := packet.AggregateBySource(flows, captureDuration)
+	if len(sources) == 0 {
+		return nil
+	}
+
+	actorFlows := make(map[string]struct{}) // flowID
+
+	// --- Amplification: много источников с ровно одним DstIP, часть — UDP на порт усилителя ---
+	victimCounts := make(map[string][]string) // victim -> list of src IPs
+	srcSingleDst := singleDstIPBySource(flows)
+	for src, victim := range srcSingleDst {
+		victimCounts[victim] = append(victimCounts[victim], src)
+	}
+	for _, srcs := range victimCounts {
+		if len(srcs) < minAmplificationActors {
+			continue
+		}
+		udpAmp := 0
+		for _, src := range srcs {
+			if sourceHasAmplifierUDPFlow(flows, src) {
+				udpAmp++
+			}
+		}
+		if udpAmp < minAmplificationUDP {
+			continue
+		}
+		for _, src := range srcs {
+			addFlowsForSource(flows, src, actorFlows)
+		}
+	}
+
+	// --- MAD по PPS среди источников (исключая текущий из baseline) ---
+	if len(sources) >= minSources {
+		ppsAll := make([]float64, len(sources))
+		for i := range sources {
+			ppsAll[i] = sources[i].PPS
+		}
+		for i := range sources {
+			others := make([]float64, 0, len(sources)-1)
+			for j := range sources {
+				if j == i {
+					continue
+				}
+				others = append(others, ppsAll[j])
+			}
+			if len(others) < minStatSample {
+				continue
+			}
+			if zm, ok := madHighScore(ppsAll[i], others, madCoeff); ok && zm > madZStrong {
+				addFlowsForSource(flows, sources[i].SourceIP, actorFlows)
+			}
+		}
+	}
+
+	if len(actorFlows) == 0 {
+		return nil
+	}
+
+	var out []packet.TimeWindow
+	for _, w := range windows {
+		st := w.Stats
+		if st.BPS <= bpsGate && st.CntSYN <= synGate {
+			continue
+		}
+		for flowID := range actorFlows {
+			f := flows[flowID]
+			if f == nil {
+				continue
+			}
+			if flowIntersectsWindow(f, w) {
+				out = append(out, w)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func flowIntersectsWindow(f *packet.FlowInfo, w packet.TimeWindow) bool {
+	for _, p := range f.Packets {
+		if !p.Timestamp.Before(w.StartTime) && p.Timestamp.Before(w.EndTime) {
+			return true
+		}
+	}
+	return false
+}
+
+func addFlowsForSource(flows map[string]*packet.FlowInfo, srcIP string, out map[string]struct{}) {
+	for id, f := range flows {
+		s := f.SourceIP
+		if s == "" && len(f.Packets) > 0 {
+			s = f.Packets[0].SrcIP
+		}
+		if s == srcIP {
+			out[id] = struct{}{}
+		}
+	}
+}
+
+func sourceHasAmplifierUDPFlow(flows map[string]*packet.FlowInfo, srcIP string) bool {
+	for _, f := range flows {
+		s := f.SourceIP
+		if s == "" && len(f.Packets) > 0 {
+			s = f.Packets[0].SrcIP
+		}
+		if s != srcIP {
+			continue
+		}
+		if f.Protocol != "UDP" {
+			continue
+		}
+		portStr := f.DestPort
+		if portStr == "" && len(f.Packets) > 0 {
+			portStr = f.Packets[0].DstPort
+		}
+		p, err := strconv.Atoi(portStr)
+		if err != nil {
+			continue
+		}
+		if _, ok := amplificationUDPPorts[p]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// singleDstIPBySource: для каждого SrcIP ровно один уникальный DstIP по всем потокам.
+func singleDstIPBySource(flows map[string]*packet.FlowInfo) map[string]string {
+	type pair struct{}
+	srcDst := make(map[string]map[string]struct{})
+	for _, f := range flows {
+		src := f.SourceIP
+		if src == "" && len(f.Packets) > 0 {
+			src = f.Packets[0].SrcIP
+		}
+		dst := f.DestinationIP
+		if dst == "" && len(f.Packets) > 0 {
+			dst = f.Packets[0].DstIP
+		}
+		if src == "" || dst == "" {
+			continue
+		}
+		if srcDst[src] == nil {
+			srcDst[src] = make(map[string]struct{})
+		}
+		srcDst[src][dst] = struct{}{}
+	}
+	out := make(map[string]string)
+	for src, set := range srcDst {
+		if len(set) == 1 {
+			for d := range set {
+				out[src] = d
+			}
+		}
+	}
+	return out
 }
 
 // totalRST – вспомогательная функция для подсчёта RST во всех окнах
