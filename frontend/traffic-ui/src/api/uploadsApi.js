@@ -4,6 +4,9 @@ export async function fetchUploads() {
   const resp = await fetch(`${API_BASE_URL}/api/uploads`);
   if (!resp.ok) throw new Error(`Failed to fetch uploads: ${resp.status}`);
   const json = await resp.json();
+  if (Array.isArray(json)) {
+    return json;
+  }
   return json.data ?? [];
 }
 

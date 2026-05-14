@@ -10,6 +10,8 @@ import ThemeToggle from "./ui/theme-toggle/ThemeToggle";
 import Sidebar from "./ui/sidebar/Sidebar";
 import SessionsPage from "./pages/SessionsPage";
 import AnalyzeFilePage from "./pages/AnalyzeFilePage";
+import LoginPage from "./pages/LoginPage";
+import SettingsPage from "./pages/SettingsPage";
 import { useTrafficDataset } from "./hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "./hooks/useTrafficDashboardView";
 import "./App.scss";
@@ -21,7 +23,7 @@ function App() {
     : "chronological";
 
   const [processedFilesCount] = React.useState(0);
-  const { allData } = useTrafficDataset();
+  const { allData, fetchAllData } = useTrafficDataset();
 
   const {
     filterSource,
@@ -61,7 +63,13 @@ function App() {
       <div className="app-shell__content">
         <div className="app">
           <div className="app__header">
-            <h2>Network Traffic</h2>
+            <h2>
+              {location.pathname === "/login"
+                ? "Вход"
+                : location.pathname === "/settings"
+                  ? "Настройки"
+                  : "Network Traffic"}
+            </h2>
             <ThemeToggle />
           </div>
 
@@ -144,6 +152,11 @@ function App() {
               }
             />
             <Route path="/analyze-file" element={<AnalyzeFilePage />} />
+            <Route
+              path="/settings"
+              element={<SettingsPage onAfterAdminMutation={fetchAllData} />}
+            />
+            <Route path="/login" element={<LoginPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
