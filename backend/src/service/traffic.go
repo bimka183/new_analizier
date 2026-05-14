@@ -108,6 +108,49 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// captureDurationFromPackets — длительность захвата для AggregateBySource (первый–последний пакет).
+func captureDurationFromPackets(packets []pkt.PacketInfo) time.Duration {
+	if len(packets) < 2 {
+		return 0
+	}
+	d := packets[len(packets)-1].Timestamp.Sub(packets[0].Timestamp)
+	if d <= 0 {
+		return 0
+	}
+	return d
+}
+
+// runWindowDetectors вызывает DDoS с потоками и остальные оконные детекторы без смены их API.
+func (s *TrafficService) runWindowDetectors(windows []pkt.TimeWindow, flows map[string]*pkt.FlowInfo, capDur time.Duration) map[string]string {
+	anomalousFlows := make(map[string]string)
+	for _, det := range s.detectors {
+		var anomalousWins []pkt.TimeWindow
+		switch t := det.(type) {
+		case *detector.DDoSDetector:
+			anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
+		default:
+			if w, ok := det.(interface {
+				AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
+			}); ok {
+				anomalousWins = w.AnalyzeWindows(windows)
+			}
+		}
+		for _, win := range anomalousWins {
+			for flowID, flow := range flows {
+				if len(flow.Packets) == 0 {
+					continue
+				}
+				firstPkt := flow.Packets[0].Timestamp
+				if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
+					(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
+					anomalousFlows[flowID] = det.Name()
+				}
+			}
+		}
+	}
+	return anomalousFlows
+}
+
 type TrafficService struct {
 	detectors     []detector.Detector
 	flowDetectors []detector.FlowDetector
@@ -169,38 +212,21 @@ func (s *TrafficService) sendProgress(uploadID uint, phase string, progress int)
 // analyzeFile выполняет парсинг и анализ файла, возвращает список моделей Traffic.
 func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 	parser := prs.NewParser()
-	packets := parser.Parse(filename)
+	packets, _ := parser.Parse(filename)
 	flows := divideByFlow(packets)
+
+	for _, flow := range flows {
+		pkt.AnalyzeFlow(flow)
+	}
 
 	// Разбиваем на временные окна для DDoS и Overload детекторов
 	windows := pkt.SplitIntoWindows(packets, 10*time.Second)
-
-	// Синхронный анализ окон (DDoS, Overload)
-	anomalousFlows := make(map[string]string) // flowID -> detectorName
-	for _, det := range s.detectors {
-		if dd, ok := det.(interface {
-			AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
-		}); ok {
-			anomalousWins := dd.AnalyzeWindows(windows)
-			for _, win := range anomalousWins {
-				for flowID, flow := range flows {
-					if len(flow.Packets) == 0 {
-						continue
-					}
-					firstPkt := flow.Packets[0].Timestamp
-					if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
-						(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
-						anomalousFlows[flowID] = det.Name()
-					}
-				}
-			}
-		}
-	}
+	capDur := captureDurationFromPackets(packets)
+	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
 	var results []models.Traffic
 
 	for _, flow := range flows {
-		pkt.AnalyzeFlow(flow)
 
 		trafficModel := MapFlowToTraffic(flow)
 
@@ -318,42 +344,26 @@ func (s *TrafficService) PipelineAsync(filename string, uploadID uint) {
 	s.sendProgress(uploadID, "parsing", 10)
 
 	parser := prs.NewParser()
-	packets := parser.Parse(filename)
+	packets, _ := parser.Parse(filename)
 
 	s.sendProgress(uploadID, "parsing", 40)
 
 	flows := divideByFlow(packets)
+	for _, flow := range flows {
+		pkt.AnalyzeFlow(flow)
+	}
 	windows := pkt.SplitIntoWindows(packets, 10*time.Second)
+	capDur := captureDurationFromPackets(packets)
 
 	s.sendProgress(uploadID, "analyzing", 50)
 
 	// Phase 2: Analyzing
-	anomalousFlows := make(map[string]string)
-	for _, det := range s.detectors {
-		if dd, ok := det.(interface {
-			AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
-		}); ok {
-			anomalousWins := dd.AnalyzeWindows(windows)
-			for _, win := range anomalousWins {
-				for flowID, flow := range flows {
-					if len(flow.Packets) == 0 {
-						continue
-					}
-					firstPkt := flow.Packets[0].Timestamp
-					if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
-						(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
-						anomalousFlows[flowID] = det.Name()
-					}
-				}
-			}
-		}
-	}
+	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
 	s.sendProgress(uploadID, "analyzing", 70)
 
 	var results []models.Traffic
 	for _, flow := range flows {
-		pkt.AnalyzeFlow(flow)
 		trafficModel := MapFlowToTraffic(flow)
 		trafficModel.UploadID = &uploadID
 

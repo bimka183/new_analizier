@@ -2,7 +2,9 @@ package detector
 
 import (
 	"analizier/backend/src/packet"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestDDoSDetector_Name(t *testing.T) {
@@ -97,5 +99,51 @@ func TestAnalyzeWindows_FlagsSynFloodAnomaly(t *testing.T) {
 	got := d.AnalyzeWindows(windows)
 	if len(got) != 1 {
 		t.Fatalf("AnalyzeWindows() returned %d anomalous windows, want 1", len(got))
+	}
+}
+
+func TestAnalyzeWindowsWithFlows_AmplificationSingleVictim(t *testing.T) {
+	start := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	winEnd := start.Add(10 * time.Second)
+	ts := start.Add(2 * time.Second)
+
+	flows := make(map[string]*packet.FlowInfo)
+	for i := 0; i < 10; i++ {
+		srcIP := fmt.Sprintf("10.0.0.%d", i+1)
+		id := fmt.Sprintf("flow-%d", i)
+		f := &packet.FlowInfo{
+			FlowID:        id,
+			SourceIP:      srcIP,
+			DestinationIP: "9.9.9.9",
+			DestPort:      "53",
+			Protocol:      "UDP",
+			Packets: []packet.PacketInfo{{
+				SrcIP: srcIP, DstIP: "9.9.9.9", SrcPort: "1111", DstPort: "53",
+				Protocol: "UDP", Length: 80, Timestamp: ts,
+			}},
+		}
+		packet.AnalyzeFlow(f)
+		flows[id] = f
+	}
+
+	windows := []packet.TimeWindow{{
+		StartTime: start,
+		EndTime:   winEnd,
+		Stats: packet.WindowStats{
+			TotalBytes: 12_000_000,
+			BPS:        1_200_000,
+			CntSYN:     2000,
+			CntRST:     5,
+		},
+	}}
+
+	d := &DDoSDetector{}
+	if got := d.AnalyzeWindows(windows); len(got) != 0 {
+		t.Fatalf("AnalyzeWindows() without flows: want 0 anomalous, got %d", len(got))
+	}
+	capDur := 100 * time.Second
+	got := d.AnalyzeWindowsWithFlows(windows, flows, capDur)
+	if len(got) != 1 {
+		t.Fatalf("AnalyzeWindowsWithFlows() = %d windows, want 1", len(got))
 	}
 }

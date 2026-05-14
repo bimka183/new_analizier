@@ -198,7 +198,11 @@ func main() {
 
 	// ----- DDoS детекция -----
 	ddosDet := &detector.DDoSDetector{}
-	anomalousWindows := ddosDet.AnalyzeWindows(windows)
+	var capDur time.Duration
+	if len(packets) >= 2 {
+		capDur = packets[len(packets)-1].Timestamp.Sub(packets[0].Timestamp)
+	}
+	anomalousWindows := ddosDet.AnalyzeWindowsWithFlows(windows, flows, capDur)
 
 	dosFlowIDs := make(map[string]bool)
 	for _, win := range anomalousWindows {
