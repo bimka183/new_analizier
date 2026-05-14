@@ -25,6 +25,10 @@ type WormDetector struct {
 	correlWindow time.Duration
 	cleanupInt   time.Duration
 	lastCleanup  time.Time
+
+	// Новые поля
+	perWindowSynStats map[time.Time]map[string]int
+	srcHistory        map[string]*srcHistoryRecord
 }
 
 type victimRecord struct {
@@ -42,8 +46,11 @@ type srcTLSStats struct {
 	lastUpdate     time.Time
 }
 
-func (d *WormDetector) Name() string {
-	return "WormDetector"
+type srcHistoryRecord struct {
+	prevUniqueDst int
+	uniqueDstList []int
+	synList       []int
+	lastUpdate    time.Time
 }
 
 func NewWormDetector(minPackets int, minBPS float64, internalNet *net.IPNet) *WormDetector {
@@ -65,7 +72,13 @@ func NewWormDetector(minPackets int, minBPS float64, internalNet *net.IPNet) *Wo
 		correlWindow:           30 * time.Second,
 		cleanupInt:             5 * time.Minute,
 		lastCleanup:            time.Now(),
+		perWindowSynStats:      make(map[time.Time]map[string]int),
+		srcHistory:             make(map[string]*srcHistoryRecord),
 	}
+}
+
+func (d *WormDetector) Name() string {
+	return "WormDetector"
 }
 
 func (d *WormDetector) Analyze(stats packet.FlowStats) DetectionResult {
@@ -94,7 +107,6 @@ func (d *WormDetector) Analyze(stats packet.FlowStats) DetectionResult {
 		return DetectionResult{IsAnomaly: false}
 	}
 
-	// Для suspicious портов: игнорируем внутренние dstIP
 	if isSuspiciousPort && d.isInternalIP(dstIP) {
 		return DetectionResult{IsAnomaly: false}
 	}
@@ -136,7 +148,6 @@ func (d *WormDetector) Analyze(stats packet.FlowStats) DetectionResult {
 
 	if isSuspiciousPort {
 		d.markAsInfected(srcIP, port, now)
-
 		confidence := 0.70
 		if stats.CntRST > 0 && stats.CntRST > stats.CntPackets/2 {
 			confidence = 0.75
@@ -168,7 +179,6 @@ func (d *WormDetector) checkTLSAnomaly(srcIP string, tlsInfo *packet.TLSInfo, ds
 	stats.uniqueDstIPs[dstIP] = struct{}{}
 	stats.lastUpdate = now
 
-	// Для TLS учитываем внутренние адреса в статистике
 	if d.isInternalIP(dstIP) {
 		stats.internalDstCnt++
 	}
@@ -182,9 +192,120 @@ func (d *WormDetector) checkTLSAnomaly(srcIP string, tlsInfo *packet.TLSInfo, ds
 	uniqueDstCount := len(stats.uniqueDstIPs)
 	internalRatio := float64(stats.internalDstCnt) / float64(stats.totalFlows)
 
+	// Перцентильный порог
+	effectiveMinUniqueDst := d.getEffectiveMinUniqueDst(srcIP, uniqueDstCount, now)
+
 	return dominantRatio >= d.WormDominantJA3Ratio &&
-		uniqueDstCount >= d.WormMinUniqueDst &&
+		uniqueDstCount >= effectiveMinUniqueDst &&
 		internalRatio >= d.WormInternalDstRatio
+}
+
+// Перцентильный порог: max(20, p95)
+func (d *WormDetector) getEffectiveMinUniqueDst(srcIP string, currentUnique int, now time.Time) int {
+	record, exists := d.srcHistory[srcIP]
+	if !exists {
+		record = &srcHistoryRecord{
+			uniqueDstList: make([]int, 0, 30),
+			synList:       make([]int, 0, 30),
+			lastUpdate:    now,
+		}
+		d.srcHistory[srcIP] = record
+	}
+
+	record.uniqueDstList = append(record.uniqueDstList, currentUnique)
+	if len(record.uniqueDstList) > 30 {
+		record.uniqueDstList = record.uniqueDstList[1:]
+	}
+	record.lastUpdate = now
+
+	if len(record.uniqueDstList) < 10 {
+		return d.WormMinUniqueDst
+	}
+
+	floatVals := make([]float64, len(record.uniqueDstList))
+	for i, v := range record.uniqueDstList {
+		floatVals[i] = float64(v)
+	}
+
+	p95, ok := packet.Percentile(floatVals, 95)
+	if !ok {
+		return d.WormMinUniqueDst
+	}
+
+	if int(p95) < d.WormMinUniqueDst {
+		return d.WormMinUniqueDst
+	}
+	return int(p95)
+}
+
+// MAD-выброс по SYN
+func (d *WormDetector) isMADOutlier(value float64, allValues []float64) bool {
+	if len(allValues) < 5 {
+		return false
+	}
+
+	median, ok := packet.Median(allValues)
+	if !ok {
+		return false
+	}
+
+	mad, ok := packet.MAD(allValues)
+	if !ok || mad == 0 {
+		return false
+	}
+
+	zmad := 0.6745 * (value - median) / mad
+	return zmad > 3.5
+}
+
+// Относительный рост уникальных dstIP
+func (d *WormDetector) AnalyzeWindow(window packet.TimeWindow, srcSynMap map[string]int) []DetectionResult {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	results := make([]DetectionResult, 0)
+	now := time.Now()
+
+	// MAD по SYN
+	synValues := make([]float64, 0, len(srcSynMap))
+	for _, count := range srcSynMap {
+		synValues = append(synValues, float64(count))
+	}
+
+	for srcIP, synCount := range srcSynMap {
+		if d.isMADOutlier(float64(synCount), synValues) {
+			if _, isVictim := d.victims[srcIP]; !isVictim {
+				results = append(results, DetectionResult{
+					IsAnomaly:  true,
+					Confidence: 0.80,
+					Type:       AnomalyWorm,
+				})
+				d.markAsInfected(srcIP, 0, now)
+			}
+		}
+	}
+
+	// Относительный рост dstIP
+	for srcIP, record := range d.srcHistory {
+		if record.prevUniqueDst > 0 && len(record.uniqueDstList) > 0 {
+			growth := packet.RelativeGrowth(float64(record.uniqueDstList[len(record.uniqueDstList)-1]), float64(record.prevUniqueDst))
+			if growth >= 5.0 {
+				if _, isVictim := d.victims[srcIP]; !isVictim {
+					results = append(results, DetectionResult{
+						IsAnomaly:  true,
+						Confidence: 0.75,
+						Type:       AnomalyWorm,
+					})
+					d.markAsInfected(srcIP, 0, now)
+				}
+			}
+		}
+		if len(record.uniqueDstList) > 0 {
+			record.prevUniqueDst = record.uniqueDstList[len(record.uniqueDstList)-1]
+		}
+	}
+
+	return results
 }
 
 func (d *WormDetector) getDominantJACount(ja3Counts map[string]int) int {
@@ -223,12 +344,10 @@ func (d *WormDetector) calculateConfidence(scanCount int) float64 {
 	if scanCount <= 1 {
 		return 0.85
 	}
-
 	bonus := float64(scanCount-1) * 0.03
 	if bonus > 0.14 {
 		bonus = 0.14
 	}
-
 	confidence := 0.85 + bonus
 	if confidence > 0.99 {
 		confidence = 0.99
@@ -247,6 +366,11 @@ func (d *WormDetector) cleanupExpired(now time.Time) {
 			delete(d.srcTLSStats, ip)
 		}
 	}
+	for ip, record := range d.srcHistory {
+		if now.Sub(record.lastUpdate) > d.correlWindow*2 {
+			delete(d.srcHistory, ip)
+		}
+	}
 }
 
 func (d *WormDetector) GetVictimCount() int {
@@ -258,10 +382,8 @@ func (d *WormDetector) GetVictimCount() int {
 func (d *WormDetector) GetActiveVictims() []string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-
 	now := time.Now()
 	active := make([]string, 0, len(d.victims))
-
 	for ip, record := range d.victims {
 		if now.Sub(record.infectedAt) <= d.correlWindow {
 			active = append(active, ip)
@@ -273,7 +395,6 @@ func (d *WormDetector) GetActiveVictims() []string {
 func (d *WormDetector) GetStats() map[string]interface{} {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-
 	now := time.Now()
 	totalTracked := len(d.victims)
 	var activeVictims, scanningVictims, totalScans int
@@ -322,5 +443,7 @@ func (d *WormDetector) Reset() {
 	defer d.mu.Unlock()
 	d.victims = make(map[string]*victimRecord)
 	d.srcTLSStats = make(map[string]*srcTLSStats)
+	d.perWindowSynStats = make(map[time.Time]map[string]int)
+	d.srcHistory = make(map[string]*srcHistoryRecord)
 	d.lastCleanup = time.Now()
 }

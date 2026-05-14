@@ -18,6 +18,12 @@ type OverloadDetector struct {
 	OverloadGrowthFactor      float64
 
 	prevClientHelloCount float64
+	
+	// Z-score, EWMA и адаптивный порог
+	ppsHistory              []float64
+	zScoreHistory           []float64
+	adaptiveThresholdActive bool
+	consecutiveCleanWindows int
 }
 
 func NewAdaptiveOverloadDetector(windowSize int, sensitivity float64) *OverloadDetector {
@@ -35,6 +41,10 @@ func NewAdaptiveOverloadDetector(windowSize int, sensitivity float64) *OverloadD
 		UseAdaptive:               true,
 		OverloadAbsoluteThreshold: 1000,
 		OverloadGrowthFactor:      5.0,
+		ppsHistory:                make([]float64, 0, 30),
+		zScoreHistory:             make([]float64, 0, 3),
+		adaptiveThresholdActive:   false,
+		consecutiveCleanWindows:   0,
 	}
 }
 
@@ -44,6 +54,10 @@ func NewFixedOverloadDetector(bps, pps float64) *OverloadDetector {
 		FixedPPSThreshold:         pps,
 		OverloadAbsoluteThreshold: 1000,
 		OverloadGrowthFactor:      5.0,
+		ppsHistory:                make([]float64, 0, 30),
+		zScoreHistory:             make([]float64, 0, 3),
+		adaptiveThresholdActive:   false,
+		consecutiveCleanWindows:   0,
 	}
 }
 
@@ -88,9 +102,11 @@ func (d *OverloadDetector) enrichWindowsWithTLS(windows []packet.TimeWindow) {
 }
 
 func (d *OverloadDetector) analyzeTLSClientHello(windows []packet.TimeWindow) []packet.TimeWindow {
+	currentThreshold := d.getCurrentThreshold()
+	
 	overloaded := make([]packet.TimeWindow, 0)
 	for _, w := range windows {
-		if w.ClientHelloCount > d.OverloadAbsoluteThreshold {
+		if w.ClientHelloCount > currentThreshold {
 			overloaded = append(overloaded, w)
 			continue
 		}
@@ -122,34 +138,130 @@ func (d *OverloadDetector) analyzeAdaptive(windows []packet.TimeWindow) []packet
 
 	overloaded := make([]packet.TimeWindow, 0)
 	
-	// Сначала собираем историю для первого анализируемого окна
 	bpsHistory := make([]float64, 0, d.WindowSize)
 	ppsHistory := make([]float64, 0, d.WindowSize)
 	
-	// Инициализируем историю первыми WindowSize окнами
+	// Инициализация истории
 	for i := 0; i < d.WindowSize; i++ {
 		bpsHistory = append(bpsHistory, windows[i].Stats.BPS)
 		ppsHistory = append(ppsHistory, windows[i].Stats.PPS)
+		d.ppsHistory = append(d.ppsHistory, windows[i].Stats.PPS)
 	}
 
-	// Анализируем окна, начиная с WindowSize-го
+	// Анализ окон
 	for i := d.WindowSize; i < len(windows); i++ {
+		currentWindow := windows[i]
+		currentPPS := currentWindow.Stats.PPS
+		
+		// Z-score анализ
+		var zScore float64
+		zScoreValid := false
+		if len(d.ppsHistory) >= 10 {
+			zScore, zScoreValid = packet.ZScore(currentPPS, d.ppsHistory)
+			
+			if zScoreValid && zScore > 3.0 {
+				_ = zScore
+			}
+			
+			if zScoreValid {
+				d.zScoreHistory = append(d.zScoreHistory, zScore)
+				if len(d.zScoreHistory) > 3 {
+					d.zScoreHistory = d.zScoreHistory[1:]
+				}
+			}
+		}
+		
+		// EWMA-тренд
+		isEWMAGrowth := false
+		if len(d.ppsHistory) >= 5 {
+			last5Values := make([]float64, 0, 6)
+			startIdx := len(d.ppsHistory) - 5
+			if startIdx < 0 {
+				startIdx = 0
+			}
+			last5Values = append(last5Values, d.ppsHistory[startIdx:]...)
+			last5Values = append(last5Values, currentPPS)
+			
+			if len(last5Values) >= 2 {
+				ewmaValues := make([]float64, len(last5Values))
+				for j := 0; j < len(last5Values); j++ {
+					ewma, _ := packet.EWMA(last5Values[:j+1], 0.3)
+					ewmaValues[j] = ewma
+				}
+				
+				isEWMAGrowth = true
+				for j := 1; j < len(ewmaValues); j++ {
+					if ewmaValues[j] <= ewmaValues[j-1] {
+						isEWMAGrowth = false
+						break
+					}
+				}
+			}
+		}
+		
+		// Мягкое снижение порога
+		hasRecentZAbove2 := false
+		for _, z := range d.zScoreHistory {
+			if z > 2.0 {
+				hasRecentZAbove2 = true
+				break
+			}
+		}
+		
+		if hasRecentZAbove2 && !d.adaptiveThresholdActive {
+			d.adaptiveThresholdActive = true
+			d.consecutiveCleanWindows = 0
+		}
+		
+		if d.adaptiveThresholdActive {
+			d.consecutiveCleanWindows++
+			if d.consecutiveCleanWindows >= 5 {
+				d.adaptiveThresholdActive = false
+				d.consecutiveCleanWindows = 0
+			}
+		}
+		
+		// Основные правила детектирования
 		avgBPS, stdBPS := meanStdDev(bpsHistory)
 		avgPPS, stdPPS := meanStdDev(ppsHistory)
 
 		thBPS := math.Max(avgBPS+d.Sensitivity*stdBPS, d.MinBPS)
 		thPPS := math.Max(avgPPS+d.Sensitivity*stdPPS, d.MinPPS)
 
-		if windows[i].Stats.BPS > thBPS || windows[i].Stats.PPS > thPPS {
-			overloaded = append(overloaded, windows[i])
+		if d.adaptiveThresholdActive {
+			thPPS = math.Max(thPPS*0.7, d.MinPPS)
+			thBPS = math.Max(thBPS*0.7, d.MinBPS)
 		}
 
-		// Сдвигаем окно: удаляем первый элемент, добавляем текущий
-		bpsHistory = append(bpsHistory[1:], windows[i].Stats.BPS)
-		ppsHistory = append(ppsHistory[1:], windows[i].Stats.PPS)
+		isOverloaded := currentWindow.Stats.BPS > thBPS || currentWindow.Stats.PPS > thPPS
+		
+		if isEWMAGrowth && !isOverloaded {
+			// постепенный рост нагрузки
+		}
+		
+		if isOverloaded {
+			overloaded = append(overloaded, currentWindow)
+		}
+
+		// Сдвиг окон
+		bpsHistory = append(bpsHistory[1:], currentWindow.Stats.BPS)
+		ppsHistory = append(ppsHistory[1:], currentPPS)
+		
+		d.ppsHistory = append(d.ppsHistory, currentPPS)
+		if len(d.ppsHistory) > 30 {
+			d.ppsHistory = d.ppsHistory[1:]
+		}
 	}
 
 	return overloaded
+}
+
+// getCurrentThreshold возвращает текущий порог для TLS
+func (d *OverloadDetector) getCurrentThreshold() float64 {
+	if d.adaptiveThresholdActive {
+		return d.OverloadAbsoluteThreshold * 0.7
+	}
+	return d.OverloadAbsoluteThreshold
 }
 
 func unionWindows(a, b []packet.TimeWindow) []packet.TimeWindow {
@@ -197,4 +309,8 @@ func (d *OverloadDetector) SetTLSThresholds(absolute, growth float64) {
 
 func (d *OverloadDetector) ResetTLSState() {
 	d.prevClientHelloCount = 0
+	d.ppsHistory = make([]float64, 0, 30)
+	d.zScoreHistory = make([]float64, 0, 3)
+	d.adaptiveThresholdActive = false
+	d.consecutiveCleanWindows = 0
 }
