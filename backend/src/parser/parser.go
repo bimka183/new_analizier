@@ -2,7 +2,7 @@ package parser
 
 import (
 	"fmt"
-	"log"
+	"io"
 	"net"
 
 	pkt "analizier/backend/src/packet"
@@ -76,10 +76,10 @@ func (p *Parser) getProtocol(packet gopacket.Packet) string {
 	}
 }
 
-func (p *Parser) Parse(filename string) []pkt.PacketInfo {
+func (p *Parser) Parse(filename string) ([]pkt.PacketInfo, error) {
 	handle, err := pcap.OpenOffline(filename)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to open pcap file: %w", err)
 	}
 	defer handle.Close()
 
@@ -89,7 +89,15 @@ func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 
 	result := make([]pkt.PacketInfo, 0)
 
-	for packet := range packetSource.Packets() {
+	for {
+		packet, err := packetSource.NextPacket()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			// Skip corrupted or unreadable packets to continue parsing the rest of the file
+			continue
+		}
 		packetNum++
 		info := pkt.PacketInfo{
 			PacketNumber:  packetNum,
@@ -99,6 +107,7 @@ func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 			TrafficVolume: int(packet.Metadata().CaptureInfo.Length),
 			Protocol:      p.getProtocol(packet),
 		}
+
 		if netLayer := packet.NetworkLayer(); netLayer != nil {
 			flow := netLayer.NetworkFlow()
 			info.FlowID = flow
@@ -112,7 +121,26 @@ func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 			} else if netLayerType == layers.LayerTypeIPv6 {
 				info.IPVersion = "IPv6"
 			}
+		} else if arpLayer := packet.Layer(layers.LayerTypeARP); arpLayer != nil {
+			arp, _ := arpLayer.(*layers.ARP)
+			if arp != nil {
+				info.SrcIP = net.IP(arp.SourceProtAddress).String()
+				info.DstIP = net.IP(arp.DstProtAddress).String()
+				info.IPVersion = "ARP"
+			}
 		}
+
+		// Fallback to LinkLayer MAC addresses if we don't have IP/ARP addresses
+		if info.SrcIP == "" || info.DstIP == "" {
+			if linkLayer := packet.LinkLayer(); linkLayer != nil {
+				flow := linkLayer.LinkFlow()
+				src, dst := flow.Endpoints()
+				info.SrcIP = src.String()
+				info.DstIP = dst.String()
+				info.IPVersion = "Ethernet"
+			}
+		}
+
 		if transLayer := packet.TransportLayer(); transLayer != nil {
 			flow := transLayer.TransportFlow()
 			info.FlowID = flow
@@ -120,9 +148,18 @@ func (p *Parser) Parse(filename string) []pkt.PacketInfo {
 			info.SrcPort = src.String()
 			info.DstPort = dst.String()
 		}
+
+		// Normalize empty Ports to "0" to keep flow grouping consistent
+		if info.SrcPort == "" {
+			info.SrcPort = "0"
+		}
+		if info.DstPort == "" {
+			info.DstPort = "0"
+		}
+
 		info.Flags = p.getInfo(packet)
 		result = append(result, info)
 	}
 
-	return result
+	return result, nil
 }

@@ -106,9 +106,12 @@ func NewTrafficService(
 
 // analyzeFile выполняет парсинг и анализ файла, возвращает список моделей Traffic.
 // Общий код для Pipeline и PipelineAnalyzeOnly.
-func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
+func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.Traffic, error) {
 	parser := prs.NewParser()
-	packets := parser.Parse(filename)
+	packets, err := parser.Parse(filename)
+	if err != nil {
+		return nil, err
+	}
 	flows := divideByFlow(packets)
 
 	// Разбиваем на временные окна для DDoS и Overload детекторов
@@ -142,6 +145,7 @@ func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 		pkt.AnalyzeFlow(flow)
 
 		trafficModel := MapFlowToTraffic(flow)
+		trafficModel.UploadID = uploadID
 
 		// Per-flow детекторы (Worm, Virus)
 		for _, d := range s.detectors {
@@ -179,7 +183,7 @@ func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 		results = append(results, trafficModel)
 	}
 
-	return results
+	return results, nil
 }
 
 // Pipeline — парсит файл, анализирует, СОХРАНЯЕТ в БД и отправляет в broadcast (для реал-тайм данных)
@@ -191,8 +195,11 @@ func (s *TrafficService) analyzeFile(filename string) []models.Traffic {
 // Пропускаем FlowStats через детекторы и получаем DetectionResult
 // Если DetectionResult.IsAnomaly добавляем DetectionResult.Type.String() в список аномалий
 // Записываем аномалии для каждого FlowInfo в таблицу единым запросом
-func (s *TrafficService) Pipeline(filename string) ([]models.Traffic, error) {
-	results := s.analyzeFile(filename)
+func (s *TrafficService) Pipeline(filename string, uploadID uint) ([]models.Traffic, error) {
+	results, err := s.analyzeFile(filename, uploadID)
+	if err != nil {
+		return nil, err
+	}
 
 	var trafficRecords []*models.Traffic
 	for i := range results {
@@ -200,7 +207,7 @@ func (s *TrafficService) Pipeline(filename string) ([]models.Traffic, error) {
 		trafficRecords = append(trafficRecords, &results[i])
 	}
 
-	err := s.repo.CreateBulk(trafficRecords)
+	err = s.repo.CreateBulk(trafficRecords)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +217,6 @@ func (s *TrafficService) Pipeline(filename string) ([]models.Traffic, error) {
 // PipelineAnalyzeOnly — парсит файл и анализирует, но НЕ сохраняет в БД.
 // Используется для загрузки файлов: результат возвращается клиенту напрямую,
 // без влияния на основную базу данных.
-func (s *TrafficService) PipelineAnalyzeOnly(filename string) []models.Traffic {
-	return s.analyzeFile(filename)
+func (s *TrafficService) PipelineAnalyzeOnly(filename string, uploadID uint) ([]models.Traffic, error) {
+	return s.analyzeFile(filename, uploadID)
 }

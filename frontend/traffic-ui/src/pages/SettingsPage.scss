@@ -1,0 +1,94 @@
+@use "../styles/vars.scss" as *;
+
+.settings-page {
+  border: 1px solid var(--control-border-color);
+  border-radius: 12px;
+  padding: 20px;
+  background-color: var(--background-color-secondary);
+  color: var(--text-color);
+  max-width: 720px;
+}
+
+.settings-page__title {
+  margin: 0 0 10px;
+  font-size: $font-size-xlarge;
+  font-weight: $font-weight-semibold;
+}
+
+.settings-page__lead {
+  margin: 0 0 16px;
+  font-size: $font-size-medium;
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.settings-page__notice {
+  margin: 0 0 12px;
+  font-size: $font-size-medium;
+  color: var(--text-color);
+
+  a {
+    color: var(--main-color);
+    font-weight: $font-weight-semibold;
+  }
+}
+
+.settings-page__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-page__card {
+  border: 1px solid var(--control-border-color);
+  border-radius: 10px;
+  padding: 16px;
+  background-color: var(--background-color);
+}
+
+.settings-page__card-title {
+  margin: 0 0 8px;
+  font-size: $font-size-large;
+  font-weight: $font-weight-semibold;
+}
+
+.settings-page__card-desc {
+  margin: 0 0 14px;
+  font-size: $font-size-small;
+  line-height: 1.45;
+  color: var(--chart-grid-color);
+
+  code {
+    font-size: $font-size-small;
+    word-break: break-all;
+  }
+}
+
+.settings-page__btn--danger {
+  border-color: $warning-color;
+  background-color: color-mix(in srgb, $warning-color 12%, var(--background-color));
+  color: var(--text-color);
+}
+
+.settings-page__btn--danger:hover:not(:disabled) {
+  border-color: $warning-color;
+  filter: brightness(0.98);
+}
+
+.settings-page__success {
+  margin: 16px 0 0;
+  font-size: $font-size-medium;
+  color: $flow-color;
+}
+
+.settings-page__error {
+  margin: 8px 0 0;
+  font-size: $font-size-medium;
+  color: $warning-color;
+}
+
+@media (max-width: $mobile-max) {
+  .settings-page {
+    padding: 16px;
+  }
+}

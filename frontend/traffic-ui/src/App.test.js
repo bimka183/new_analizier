@@ -1,7 +1,15 @@
-import { render, screen } from '@testing-library/react';
-import App from './App';
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import App from "./App";
+import { AuthProvider } from "./context/AuthContext";
 
-test('renders main heading', () => {
-  render(<App />);
-  expect(screen.getByRole('heading', { name: /network traffic/i })).toBeInTheDocument();
+test("renders main heading", () => {
+  render(
+    <MemoryRouter initialEntries={["/dashboard"]}>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </MemoryRouter>
+  );
+  expect(screen.getByRole("heading", { name: /network traffic/i })).toBeInTheDocument();
 });

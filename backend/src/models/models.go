@@ -2,6 +2,7 @@ package models
 
 type Traffic struct {
 	ID              uint   `json:"id" gorm:"primaryKey"`
+	UploadID        uint   `json:"upload_id" gorm:"index"`
 	FlowID          string `json:"flow_id"`
 	Timestamp       string `json:"timestamp"`
 	Interface       string `json:"interface"`
@@ -48,6 +49,15 @@ type User struct {
 	Role     string `json:"role" gorm:"default:user"` // "user" or "admin"
 }
 
+// Upload model for file history
+type Upload struct {
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	Filename   string `json:"filename"`
+	UploadedAt string `json:"uploaded_at"`
+	FlowCount  int    `json:"flow_count"`
+	Summary    string `json:"summary"`
+}
+
 // TrafficFilter holds all supported server-side filter parameters
 type TrafficFilter struct {
 	SourceIP      string
@@ -55,4 +65,5 @@ type TrafficFilter struct {
 	Port          string
 	AnomalyType   string
 	Protocol      string
+	UploadID      string
 }

@@ -45,7 +45,7 @@ type App struct {
 
 func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
-	router.MaxMultipartMemory = 10 << 20
+	router.MaxMultipartMemory = 500 << 20
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
@@ -87,6 +87,10 @@ func (a *App) SetupRouter() {
 		api.GET("/traffic", a.handleGetTraffic)
 		api.GET("/traffic/:id", a.handleGetTrafficByID)
 		api.POST("/upload", a.handleUpload)
+		api.GET("/uploads", a.handleGetUploads)
+		api.GET("/uploads/:id", a.handleGetUploadByID)
+		api.GET("/uploads/:id/download", a.handleDownloadUpload)
+		api.DELETE("/uploads/:id", a.handleDeleteUpload)
 		api.POST("/login", a.handleLogin)
 
 		// Администраторские эндпоинты
@@ -179,6 +183,10 @@ func (a *App) handleUpload(c *gin.Context) {
 		return
 	}
 	path := "files/" + file.Filename
+	if err := os.MkdirAll("files", os.ModePerm); err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create files directory: " + err.Error()})
+		return
+	}
 	if err = c.SaveUploadedFile(file, path); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -186,19 +194,128 @@ func (a *App) handleUpload(c *gin.Context) {
 
 	fmt.Printf("Uploading file: %s\n", path)
 
-	// Анализируем файл И сохраняем в БД
-	results, err := a.TrafficService.Pipeline(path)
+	// 1. Сначала создаём запись об импорте в БД, чтобы получить ID
+	uploadRecord := models.Upload{
+		Filename:   file.Filename,
+		UploadedAt: time.Now().Format(time.RFC3339),
+		FlowCount:  0,
+		Summary:    "",
+	}
+	if err := a.DB.Create(&uploadRecord).Error; err != nil {
+		os.Remove(path)
+		c.JSON(500, gin.H{"error": "Failed to create upload record: " + err.Error()})
+		return
+	}
+
+	// 2. Анализируем файл И сохраняем в БД, связывая с uploadRecord.ID
+	results, err := a.TrafficService.Pipeline(path, uploadRecord.ID)
 	if err != nil {
+		// В случае ошибки удаляем запись об импорте и файл
+		a.DB.Delete(&models.Upload{}, uploadRecord.ID)
+		os.Remove(path)
 		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
 		return
 	}
 	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
+
+	totalPackets := 0
+	for _, r := range results {
+		totalPackets += r.Packets
+	}
+
+	// 3. Обновляем информацию в записи об импорте
+	uploadRecord.FlowCount = len(results)
+	uploadRecord.Summary = fmt.Sprintf(`{"packets": %d}`, totalPackets)
+	a.DB.Save(&uploadRecord)
 
 	c.JSON(200, gin.H{
 		"status": "analyzed",
 		"data":   results,
 		"total":  len(results),
 	})
+}
+
+func (a *App) handleGetUploads(c *gin.Context) {
+	var uploads []models.Upload
+	if err := a.DB.Order("id desc").Find(&uploads).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, uploads)
+}
+
+func (a *App) handleGetUploadByID(c *gin.Context) {
+	id := c.Param("id")
+	var upload models.Upload
+	if err := a.DB.First(&upload, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
+		return
+	}
+	c.JSON(200, upload)
+}
+
+func (a *App) handleDeleteUpload(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	var upload models.Upload
+	if err := a.DB.First(&upload, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
+		return
+	}
+
+	// 1. Удаляем физический файл с диска
+	path := "files/" + upload.Filename
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: failed to delete file %s: %v\n", path, err)
+	}
+
+	// 2. Находим и каскадно удаляем все записи Traffic и Anomalies, связанные с этой загрузкой
+	var trafficIDs []uint
+	a.DB.Model(&models.Traffic{}).Where("upload_id = ?", id).Pluck("id", &trafficIDs)
+	if len(trafficIDs) > 0 {
+		a.DB.Where("traffic_id IN ?", trafficIDs).Delete(&models.Anomaly{})
+		a.DB.Where("id IN ?", trafficIDs).Delete(&models.Traffic{})
+	}
+
+	// 3. Удаляем саму запись из таблицы uploads
+	if err := a.DB.Delete(&models.Upload{}, id).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"status": "deleted"})
+}
+
+func (a *App) handleDownloadUpload(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	var upload models.Upload
+	if err := a.DB.First(&upload, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
+		return
+	}
+
+	path := "files/" + upload.Filename
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "physical file not found on disk"})
+		return
+	}
+
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", "attachment; filename="+upload.Filename)
+	c.Header("Content-Type", "application/octet-stream")
+	c.File(path)
 }
 
 func (a *App) handlePostTraffic(c *gin.Context) {
@@ -253,6 +370,7 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		Port:          c.DefaultQuery("port", ""),
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
+		UploadID:      c.DefaultQuery("upload_id", ""),
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)
@@ -297,6 +415,8 @@ func (a *App) handleDeleteTraffic(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+	os.RemoveAll("files")
+	os.MkdirAll("files", os.ModePerm)
 	c.JSON(200, gin.H{"status": "all traffic data deleted"})
 }
 
@@ -307,6 +427,8 @@ func (a *App) handleReset(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+	os.RemoveAll("files")
+	os.MkdirAll("files", os.ModePerm)
 	c.JSON(200, gin.H{"status": "database reset to default state"})
 }
 
@@ -442,7 +564,7 @@ func main() {
 		panic(fmt.Errorf("could not connect to database after retries: %v", err))
 	}
 
-	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{})
+	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{}, &models.Upload{})
 
 	app := NewApp(db)
 

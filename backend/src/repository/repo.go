@@ -85,6 +85,9 @@ func (r *postgresTrafficRepo) applyFilters(query *gorm.DB, filter models.Traffic
 	if filter.Protocol != "" {
 		query = query.Where("protocol = ?", filter.Protocol)
 	}
+	if filter.UploadID != "" {
+		query = query.Where("upload_id = ?", filter.UploadID)
+	}
 	if filter.AnomalyType != "" {
 		if filter.AnomalyType == "None" {
 			// Записи без аномалий
@@ -128,11 +131,15 @@ func (r *postgresTrafficRepo) CountTraffic(filter models.TrafficFilter) (int64, 
 // DeleteAllTraffic удаляет все записи трафика и аномалий (очистка БД)
 func (r *postgresTrafficRepo) DeleteAllTraffic() error {
 	// Сначала удаляем все аномалии
-	if err := r.db.Exec("DELETE FROM anomalies").Error; err != nil {
+	if err := r.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Anomaly{}).Error; err != nil {
 		return err
 	}
 	// Затем удаляем весь трафик
-	if err := r.db.Exec("DELETE FROM traffics").Error; err != nil {
+	if err := r.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Traffic{}).Error; err != nil {
+		return err
+	}
+	// Также удаляем историю загрузок
+	if err := r.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Upload{}).Error; err != nil {
 		return err
 	}
 	return nil
@@ -147,8 +154,11 @@ func (r *postgresTrafficRepo) ResetDatabase() error {
 	if err := r.db.Migrator().DropTable(&models.Traffic{}); err != nil {
 		return err
 	}
+	if err := r.db.Migrator().DropTable(&models.Upload{}); err != nil {
+		return err
+	}
 	// Пересоздаём таблицы
-	if err := r.db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}); err != nil {
+	if err := r.db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.Upload{}); err != nil {
 		return err
 	}
 	return nil
