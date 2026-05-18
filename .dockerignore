@@ -1,0 +1,36 @@
+# Build context for backend (docker-compose: backend.build.context = .)
+# Dockerfile copies only: go.mod, go.sum, backend/, src/
+
+# VCS / IDE
+.git
+.gitignore
+.idea
+.vscode
+.github
+
+# Other stack parts (not copied into backend image)
+frontend/
+
+# Large captures and binaries (mounted at runtime via ./files)
+files/
+**/*.pcap
+
+# Docs and reports
+*.md
+*.pdf
+docs/
+
+# Helper scripts at repo root
+*.sh
+
+# Secrets / local env (never send to build daemon)
+.env
+.env.*
+
+# Tooling / caches
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.cursor/
