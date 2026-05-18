@@ -396,7 +396,7 @@ func unionTimeWindows(a, b []packet.TimeWindow) []packet.TimeWindow {
 // помечает окна с высоким BPS или SYN, пересекающиеся по времени с «акторами».
 func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows map[string]*packet.FlowInfo, captureDuration time.Duration) []packet.TimeWindow {
 	const (
-		bpsGate    = 1_000_000
+		bpsGate    = 1_000_000 // Мы эмпирическим путем вывели такие пороги
 		synGate    = 1000
 		madCoeff   = 0.6745
 		madZStrong = 3.5
