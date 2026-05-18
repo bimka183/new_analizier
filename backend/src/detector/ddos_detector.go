@@ -122,7 +122,6 @@ func (d *DDoSDetector) AnalyzeWindowsWithFlows(windows []packet.TimeWindow, flow
 
 // analyzeWindowsFromStats — прежняя логика только по WindowStats (скользящая история окон).
 func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []packet.TimeWindow {
-	totalRST := totalRST(windows)
 	const (
 		bpsThreshold      = 1_000_000
 		rstSynRatioLegacy = 15.0
@@ -143,9 +142,6 @@ func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []pa
 	)
 
 	var anomalous []packet.TimeWindow
-	if totalRST <= 10 {
-		return anomalous
-	}
 
 	ewmaBPSLogReset()
 
@@ -392,6 +388,78 @@ func unionTimeWindows(a, b []packet.TimeWindow) []packet.TimeWindow {
 	return out
 }
 
+// sourceIPFromFlow возвращает IP источника потока (согласовано с addFlowsForSource).
+func sourceIPFromFlow(f *packet.FlowInfo) string {
+	if f == nil {
+		return ""
+	}
+	if f.SourceIP != "" {
+		return f.SourceIP
+	}
+	if len(f.Packets) > 0 {
+		return f.Packets[0].SrcIP
+	}
+	return ""
+}
+
+// destIPFromFlow возвращает IP назначения потока.
+func destIPFromFlow(f *packet.FlowInfo) string {
+	if f == nil {
+		return ""
+	}
+	if f.DestinationIP != "" {
+		return f.DestinationIP
+	}
+	if len(f.Packets) > 0 {
+		return f.Packets[0].DstIP
+	}
+	return ""
+}
+
+func packetCountForSourceAgg(f *packet.FlowInfo) int {
+	if f == nil {
+		return 0
+	}
+	if n := len(f.Packets); n > 0 {
+		return n
+	}
+	return f.Stats.CntPackets
+}
+
+// sourceAgg — суммарная активность источника по длительности захвата (пакеты/сек для MAD).
+type sourceAgg struct {
+	SourceIP string
+	PPS      float64
+}
+
+// aggregateBySource суммирует пакеты по всем потокам каждого SrcIP и делит на длительность захвата (как WindowStats.PPS).
+func aggregateBySource(flows map[string]*packet.FlowInfo, captureDuration time.Duration) []sourceAgg {
+	sec := captureDuration.Seconds()
+	if sec <= 0 || len(flows) == 0 {
+		return nil
+	}
+	counts := make(map[string]int)
+	for _, f := range flows {
+		src := sourceIPFromFlow(f)
+		if src == "" {
+			continue
+		}
+		n := packetCountForSourceAgg(f)
+		if n <= 0 {
+			continue
+		}
+		counts[src] += n
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make([]sourceAgg, 0, len(counts))
+	for ip, total := range counts {
+		out = append(out, sourceAgg{SourceIP: ip, PPS: float64(total) / sec})
+	}
+	return out
+}
+
 // sourceAugmentedWindows — reflection/amplification (упрощённо) и MAD по PPS среди источников;
 // помечает окна с высоким BPS или SYN, пересекающиеся по времени с «акторами».
 func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows map[string]*packet.FlowInfo, captureDuration time.Duration) []packet.TimeWindow {
@@ -403,7 +471,7 @@ func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows
 		minSources = 10 // MinSourcesForAdaptation из PDF (агрегация по источникам)
 	)
 
-	sources := packet.AggregateBySource(flows, captureDuration)
+	sources := aggregateBySource(flows, captureDuration)
 	if len(sources) == 0 {
 		return nil
 	}
@@ -498,11 +566,7 @@ func flowIntersectsWindow(f *packet.FlowInfo, w packet.TimeWindow) bool {
 
 func addFlowsForSource(flows map[string]*packet.FlowInfo, srcIP string, out map[string]struct{}) {
 	for id, f := range flows {
-		s := f.SourceIP
-		if s == "" && len(f.Packets) > 0 {
-			s = f.Packets[0].SrcIP
-		}
-		if s == srcIP {
+		if sourceIPFromFlow(f) == srcIP {
 			out[id] = struct{}{}
 		}
 	}
@@ -510,11 +574,7 @@ func addFlowsForSource(flows map[string]*packet.FlowInfo, srcIP string, out map[
 
 func sourceHasAmplifierUDPFlow(flows map[string]*packet.FlowInfo, srcIP string) bool {
 	for _, f := range flows {
-		s := f.SourceIP
-		if s == "" && len(f.Packets) > 0 {
-			s = f.Packets[0].SrcIP
-		}
-		if s != srcIP {
+		if sourceIPFromFlow(f) != srcIP {
 			continue
 		}
 		if f.Protocol != "UDP" {
@@ -537,17 +597,10 @@ func sourceHasAmplifierUDPFlow(flows map[string]*packet.FlowInfo, srcIP string) 
 
 // singleDstIPBySource: для каждого SrcIP ровно один уникальный DstIP по всем потокам.
 func singleDstIPBySource(flows map[string]*packet.FlowInfo) map[string]string {
-	type pair struct{}
 	srcDst := make(map[string]map[string]struct{})
 	for _, f := range flows {
-		src := f.SourceIP
-		if src == "" && len(f.Packets) > 0 {
-			src = f.Packets[0].SrcIP
-		}
-		dst := f.DestinationIP
-		if dst == "" && len(f.Packets) > 0 {
-			dst = f.Packets[0].DstIP
-		}
+		src := sourceIPFromFlow(f)
+		dst := destIPFromFlow(f)
 		if src == "" || dst == "" {
 			continue
 		}

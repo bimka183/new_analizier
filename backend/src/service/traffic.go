@@ -169,30 +169,11 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	// Разбиваем на временные окна для DDoS и Overload детекторов
 	windows := pkt.SplitIntoWindows(packets, 10*time.Second)
 
-	// Синхронный анализ окон (DDoS, Overload)
-	anomalousFlows := make(map[string]string) // flowID -> detectorName
-	for _, det := range s.detectors {
-		if dd, ok := det.(interface {
-			AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
-		}); ok {
-			anomalousWins := dd.AnalyzeWindows(windows)
-			if len(anomalousWins) > 0 {
-				for flowID, flow := range flows {
-					if len(flow.Packets) == 0 {
-						continue
-					}
-					firstPkt := flow.Packets[0].Timestamp
-					for _, win := range anomalousWins {
-						if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
-							(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
-							anomalousFlows[flowID] = det.Name()
-							break
-						}
-					}
-				}
-			}
-		}
-	}
+	capDur := captureDurationFromPackets(packets)
+
+	// Синхронный анализ окон: DDoS — AnalyzeWindowsWithFlows (агрегация по источнику);
+	// остальные — AnalyzeWindows; привязка потоков по пересечению времени окна с пакетами потока.
+	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
 	var results []models.Traffic
 

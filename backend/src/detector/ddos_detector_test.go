@@ -3,9 +3,60 @@ package detector
 import (
 	"analizier/backend/src/packet"
 	"fmt"
+	"math"
+	"sort"
 	"testing"
 	"time"
 )
+
+func Test_aggregateBySource_PPS(t *testing.T) {
+	flows := map[string]*packet.FlowInfo{
+		"a": {SourceIP: "10.0.0.1", Packets: make([]packet.PacketInfo, 100)},
+		"b": {SourceIP: "10.0.0.1", Packets: make([]packet.PacketInfo, 50)},
+		"c": {SourceIP: "10.0.0.2", Packets: make([]packet.PacketInfo, 10)},
+	}
+	cap := 10 * time.Second
+	got := aggregateBySource(flows, cap)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 distinct sources", len(got))
+	}
+	sort.Slice(got, func(i, j int) bool { return got[i].SourceIP < got[j].SourceIP })
+	want1 := 150.0 / cap.Seconds()
+	want2 := 10.0 / cap.Seconds()
+	if got[0].SourceIP != "10.0.0.1" || math.Abs(got[0].PPS-want1) > 1e-9 {
+		t.Fatalf("10.0.0.1: %+v want PPS=%g", got[0], want1)
+	}
+	if got[1].SourceIP != "10.0.0.2" || math.Abs(got[1].PPS-want2) > 1e-9 {
+		t.Fatalf("10.0.0.2: %+v want PPS=%g", got[1], want2)
+	}
+}
+
+func Test_aggregateBySource_emptyOrZeroDuration(t *testing.T) {
+	if got := aggregateBySource(nil, time.Second); got != nil {
+		t.Fatalf("nil flows: got %#v, want nil", got)
+	}
+	if got := aggregateBySource(map[string]*packet.FlowInfo{}, time.Second); got != nil {
+		t.Fatalf("empty map: got %#v, want nil", got)
+	}
+	if got := aggregateBySource(map[string]*packet.FlowInfo{"x": {SourceIP: "1.1.1.1", Packets: []packet.PacketInfo{{}}}}, 0); got != nil {
+		t.Fatalf("zero duration: got %#v, want nil", got)
+	}
+}
+
+func Test_aggregateBySource_usesCntPacketsWhenNoPacketSlice(t *testing.T) {
+	flows := map[string]*packet.FlowInfo{
+		"x": {SourceIP: "192.168.0.5", Packets: nil, Stats: packet.FlowStats{CntPackets: 20}},
+	}
+	cap := 2 * time.Second
+	got := aggregateBySource(flows, cap)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	want := 20.0 / cap.Seconds()
+	if math.Abs(got[0].PPS-want) > 1e-9 {
+		t.Fatalf("PPS = %g, want %g", got[0].PPS, want)
+	}
+}
 
 func TestDDoSDetector_Name(t *testing.T) {
 	d := &DDoSDetector{}
@@ -33,7 +84,7 @@ func Test_totalRST_SumsAcrossWindows(t *testing.T) {
 	}
 }
 
-func TestAnalyzeWindows_FiltersWhenTotalRSTTooLow(t *testing.T) {
+func TestAnalyzeWindows_NoSpuriousWhenHighBpsButQuietSignals(t *testing.T) {
 	d := &DDoSDetector{}
 	windows := []packet.TimeWindow{
 		{Stats: packet.WindowStats{BPS: 2_000_000, CntSYN: 10, CntRST: 10}},
@@ -46,7 +97,6 @@ func TestAnalyzeWindows_FiltersWhenTotalRSTTooLow(t *testing.T) {
 func TestAnalyzeWindows_FiltersWhenBPSBelowThreshold(t *testing.T) {
 	d := &DDoSDetector{}
 	windows := []packet.TimeWindow{
-		// totalRST must be > 10 to pass the early return.
 		{Stats: packet.WindowStats{BPS: 1_000_000, CntSYN: 1, CntRST: 11}},
 		{Stats: packet.WindowStats{BPS: 999_999, CntSYN: 1, CntRST: 0}},
 	}
@@ -58,7 +108,6 @@ func TestAnalyzeWindows_FiltersWhenBPSBelowThreshold(t *testing.T) {
 func TestAnalyzeWindows_FlagsRSTSynRatioAnomaly(t *testing.T) {
 	d := &DDoSDetector{}
 	windows := []packet.TimeWindow{
-		// totalRST must be > 10. Also BPS must be > 1_000_000.
 		{Stats: packet.WindowStats{BPS: 2_000_000, CntSYN: 1, CntRST: 16}},
 	}
 	got := d.AnalyzeWindows(windows)
@@ -70,7 +119,6 @@ func TestAnalyzeWindows_FlagsRSTSynRatioAnomaly(t *testing.T) {
 func TestAnalyzeWindows_FlagsUniqueDstPortsAnomaly(t *testing.T) {
 	d := &DDoSDetector{}
 	windows := []packet.TimeWindow{
-		// Ensure totalRST > 10 so the detector doesn't short-circuit.
 		{Stats: packet.WindowStats{BPS: 2_000_000, UniqueDstPorts: 371, CntRST: 11}},
 	}
 	got := d.AnalyzeWindows(windows)
@@ -84,11 +132,8 @@ func TestAnalyzeWindows_FlagsSynFloodAnomaly(t *testing.T) {
 	windows := []packet.TimeWindow{
 		{
 			Stats: packet.WindowStats{
-				// Required gates.
-				BPS: 2_000_000,
-				// Ensure totalRST > 10 overall.
-				CntRST: 11,
-				// SYN flood condition.
+				BPS:            2_000_000,
+				CntRST:         11,
 				CntSYN:         1500,
 				CntACK:         0,
 				UniqueSrcIPs:   600, // synPerIP = 2.5 (< 3.0)
