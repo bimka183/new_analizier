@@ -124,15 +124,18 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 			AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
 		}); ok {
 			anomalousWins := dd.AnalyzeWindows(windows)
-			for _, win := range anomalousWins {
+			if len(anomalousWins) > 0 {
 				for flowID, flow := range flows {
 					if len(flow.Packets) == 0 {
 						continue
 					}
 					firstPkt := flow.Packets[0].Timestamp
-					if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
-						(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
-						anomalousFlows[flowID] = det.Name()
+					for _, win := range anomalousWins {
+						if (firstPkt.After(win.StartTime) || firstPkt.Equal(win.StartTime)) &&
+							(firstPkt.Before(win.EndTime) || firstPkt.Equal(win.EndTime)) {
+							anomalousFlows[flowID] = det.Name()
+							break
+						}
 					}
 				}
 			}
@@ -203,7 +206,6 @@ func (s *TrafficService) Pipeline(filename string, uploadID uint) ([]models.Traf
 
 	var trafficRecords []*models.Traffic
 	for i := range results {
-		s.broadcast <- results[i]
 		trafficRecords = append(trafficRecords, &results[i])
 	}
 

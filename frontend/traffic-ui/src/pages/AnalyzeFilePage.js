@@ -6,6 +6,7 @@ import TrafficTable from "../components/TrafficTable";
 import SectionContainer from "../ui/section-container";
 import { useTrafficDashboardView } from "../hooks/useTrafficDashboardView";
 import { createMockTrafficRowsFromFile } from "../utils/mockFileAnalysis";
+import { API_BASE_URL } from "../constants/trafficApp";
 import "./AnalyzeFilePage.scss";
 
 const EMPTY_SUMMARY = {
@@ -73,7 +74,7 @@ function AnalyzeFilePage() {
     setAnalysisSummary(EMPTY_SUMMARY);
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!file) return;
 
     clearPendingTimers();
@@ -82,27 +83,42 @@ function AnalyzeFilePage() {
     setFileRows([]);
     setAnalysisSummary(EMPTY_SUMMARY);
 
-    const mockRows = createMockTrafficRowsFromFile(file);
-    const uniqueFlows = new Set(mockRows.map((item) => item.flow_id)).size;
-    const startedAt = mockRows[0]?.timestamp || "—";
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const processingTimer = setTimeout(() => {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed with status ${response.status}`);
+      }
+
       setUploadStatus("processing");
-    }, 450);
+      const result = await response.json();
+      const rows = result.data || [];
 
-    const completionTimer = setTimeout(() => {
-      setFileRows(mockRows);
+      // Calculate statistics
+      const uniqueFlows = new Set(rows.map((item) => item.flow_id)).size;
+      const startedAt = rows[0]?.timestamp || "—";
+      const totalPackets = rows.reduce((acc, item) => acc + (item.packets || 0), 0);
+
+      setFileRows(rows);
       setAnalysisSummary({
-        packets: mockRows.length,
+        packets: totalPackets,
         flows: uniqueFlows,
         startTime: startedAt,
-        duration: `${Math.max(1, Math.ceil(mockRows.length / 5))} min`,
+        duration: "—",
       });
       setUploadStatus("completed");
       setIsReportAvailable(true);
-    }, 1200);
-
-    timersRef.current = [processingTimer, completionTimer];
+    } catch (error) {
+      setUploadStatus("error");
+      // eslint-disable-next-line no-console
+      console.error("PCAP upload failed", error);
+    }
   };
 
   return (
