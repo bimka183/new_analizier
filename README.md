@@ -22,6 +22,5 @@
 
 ## Технологический стек
 Backend: `Golang`
-Database: `SQLite`
+Database: `PostgreSQL`
 Frontend: `React`
-
