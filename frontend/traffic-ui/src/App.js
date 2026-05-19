@@ -13,45 +13,39 @@ import AnalyzeFilePage from "./pages/AnalyzeFilePage";
 import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
 import { DEFAULT_HOME_ROUTE } from "./constants/trafficApp";
+import { useFilteredTrafficQuery } from "./hooks/useFilteredTrafficQuery";
 import { useTrafficDataset } from "./hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "./hooks/useTrafficDashboardView";
 import "./App.scss";
 
 function App() {
   const location = useLocation();
-  const tableBaseOrder = location.pathname.startsWith("/sessions")
-    ? "newest"
-    : "chronological";
+  const isSessionsRoute = location.pathname.startsWith("/sessions");
 
   const [processedFilesCount] = React.useState(0);
   const { allData, fetchAllData } = useTrafficDataset();
 
-  const {
-    filterSource,
-    setFilterSource,
-    filterDestination,
-    setFilterDestination,
-    filterPort,
-    setFilterPort,
-    filterAnomaly,
-    setFilterAnomaly,
-    clearFilters,
-    sortColumn,
-    sortDirection,
-    cycleTableSort,
-    itemsPerPage,
-    setItemsPerPage,
-    currentPage,
-    setCurrentPage,
-    filteredChartData,
-    totalPages,
-    trafficTableGroups,
-    paginatedTableGroups,
-    trafficByIP,
-    anomaliesCount,
-    trafficByTime,
-    threatSummary,
-  } = useTrafficDashboardView(allData, { tableBaseOrder });
+  const sessionsQuery = useFilteredTrafficQuery({ enabled: isSessionsRoute });
+
+  const dashboardView = useTrafficDashboardView(allData, {
+    tableBaseOrder: "chronological",
+  });
+
+  const sessionsTableView = useTrafficDashboardView(sessionsQuery.pageRows, {
+    tableBaseOrder: "newest",
+    serverPagination: true,
+    serverTotalRows: sessionsQuery.totalRows,
+    itemsPerPage: sessionsQuery.itemsPerPage,
+    currentPage: sessionsQuery.currentPage,
+  });
+
+  const { refetch: refetchSessions } = sessionsQuery;
+
+  const handleAfterAdminMutation = React.useCallback(() => {
+    fetchAllData();
+    refetchSessions();
+  }, [fetchAllData, refetchSessions]);
+
   const systemStatus = "OK";
 
   return (
@@ -81,8 +75,8 @@ function App() {
                 <>
                   <SectionContainer as="section" className="app__dashboard-overview">
                     <DashboardThreatPanel
-                      threatSummary={threatSummary}
-                      threatRowsCount={filteredChartData.length}
+                      threatSummary={dashboardView.threatSummary}
+                      threatRowsCount={dashboardView.filteredChartData.length}
                     />
                   </SectionContainer>
                   <div className="app__metrics" aria-label="Dashboard metrics">
@@ -93,9 +87,9 @@ function App() {
                     />
                   </div>
                   <TrafficCharts
-                    trafficByIP={trafficByIP}
-                    anomaliesCount={anomaliesCount}
-                    trafficByTime={trafficByTime}
+                    trafficByIP={dashboardView.trafficByIP}
+                    anomaliesCount={dashboardView.anomaliesCount}
+                    trafficByTime={dashboardView.trafficByTime}
                   />
                   <section
                     className="app__traffic-section"
@@ -106,19 +100,23 @@ function App() {
                     </h3>
                     <div className="app__controls">
                       <TrafficTable
-                        groups={paginatedTableGroups}
-                        sortColumn={sortColumn}
-                        sortDirection={sortDirection}
-                        onSortColumn={cycleTableSort}
+                        groups={dashboardView.paginatedTableGroups}
+                        sortColumn={dashboardView.sortColumn}
+                        sortDirection={dashboardView.sortDirection}
+                        onSortColumn={dashboardView.cycleTableSort}
                       />
                       <TrafficPagination
-                        currentPage={currentPage}
-                        totalPages={totalPages || 1}
-                        totalRows={trafficTableGroups.length}
-                        itemsPerPage={itemsPerPage}
-                        onItemsPerPageChange={setItemsPerPage}
-                        onPrev={() => setCurrentPage((page) => page - 1)}
-                        onNext={() => setCurrentPage((page) => page + 1)}
+                        currentPage={dashboardView.currentPage}
+                        totalPages={dashboardView.totalPages || 1}
+                        totalRows={dashboardView.trafficTableGroups.length}
+                        itemsPerPage={dashboardView.itemsPerPage}
+                        onItemsPerPageChange={dashboardView.setItemsPerPage}
+                        onPrev={() =>
+                          dashboardView.setCurrentPage((page) => page - 1)
+                        }
+                        onNext={() =>
+                          dashboardView.setCurrentPage((page) => page + 1)
+                        }
                       />
                     </div>
                   </section>
@@ -129,33 +127,35 @@ function App() {
               path="/sessions"
               element={
                 <SessionsPage
-                  paginatedTableGroups={paginatedTableGroups}
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSortColumn={cycleTableSort}
-                  filterSource={filterSource}
-                  filterDestination={filterDestination}
-                  filterPort={filterPort}
-                  filterAnomaly={filterAnomaly}
-                  onFilterSourceChange={setFilterSource}
-                  onFilterDestinationChange={setFilterDestination}
-                  onFilterPortChange={setFilterPort}
-                  onFilterAnomalyChange={setFilterAnomaly}
-                  onClearFilters={clearFilters}
-                  currentPage={currentPage}
-                  totalPages={totalPages || 1}
-                  totalRows={trafficTableGroups.length}
-                  itemsPerPage={itemsPerPage}
-                  onItemsPerPageChange={setItemsPerPage}
-                  onPrevPage={() => setCurrentPage((page) => page - 1)}
-                  onNextPage={() => setCurrentPage((page) => page + 1)}
+                  paginatedTableGroups={sessionsTableView.paginatedTableGroups}
+                  sortColumn={sessionsTableView.sortColumn}
+                  sortDirection={sessionsTableView.sortDirection}
+                  onSortColumn={sessionsTableView.cycleTableSort}
+                  filterSource={sessionsQuery.filterSource}
+                  filterDestination={sessionsQuery.filterDestination}
+                  filterPort={sessionsQuery.filterPort}
+                  filterAnomaly={sessionsQuery.filterAnomaly}
+                  onFilterSourceChange={sessionsQuery.setFilterSource}
+                  onFilterDestinationChange={sessionsQuery.setFilterDestination}
+                  onFilterPortChange={sessionsQuery.setFilterPort}
+                  onFilterAnomalyChange={sessionsQuery.setFilterAnomaly}
+                  onClearFilters={sessionsQuery.clearFilters}
+                  currentPage={sessionsQuery.currentPage}
+                  totalPages={sessionsQuery.totalPages}
+                  totalRows={sessionsQuery.totalRows}
+                  itemsPerPage={sessionsQuery.itemsPerPage}
+                  onItemsPerPageChange={sessionsQuery.setItemsPerPage}
+                  onPrevPage={sessionsQuery.goPrev}
+                  onNextPage={sessionsQuery.goNext}
+                  loading={sessionsQuery.loading}
+                  fetchError={sessionsQuery.fetchError}
                 />
               }
             />
             <Route path="/analyze-file" element={<AnalyzeFilePage />} />
             <Route
               path="/settings"
-              element={<SettingsPage onAfterAdminMutation={fetchAllData} />}
+              element={<SettingsPage onAfterAdminMutation={handleAfterAdminMutation} />}
             />
             <Route path="/login" element={<LoginPage />} />
             <Route path="*" element={<Navigate to={DEFAULT_HOME_ROUTE} replace />} />

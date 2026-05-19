@@ -23,6 +23,16 @@
     opacity: 0.85;
   }
 
+  &__status {
+    margin: 0 0 12px;
+    font-size: $font-size-small;
+    opacity: 0.9;
+
+    &--error {
+      color: var(--danger-color, #c62828);
+    }
+  }
+
   &__controls {
     margin-top: 4px;
   }
