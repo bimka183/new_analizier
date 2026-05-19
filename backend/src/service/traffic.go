@@ -175,6 +175,9 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	// остальные — AnalyzeWindows; привязка потоков по пересечению времени окна с пакетами потока.
 	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
+	portScanDet := detector.NewPortScanDetector()
+	scanningIPs := portScanDet.ScanningSources(flows, capDur)
+
 	var results []models.Traffic
 
 	for _, flow := range flows {
@@ -199,6 +202,16 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 					AnomalyType: detRes.Type.String(),
 				})
 			}
+		}
+
+		srcIP := flow.SourceIP
+		if flow.Stats.SrcIP != "" {
+			srcIP = flow.Stats.SrcIP
+		}
+		if scanningIPs[srcIP] {
+			trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+				AnomalyType: detector.AnomalyScanning.String(),
+			})
 		}
 
 		// DDoS/Overload аномалии из анализа окон
