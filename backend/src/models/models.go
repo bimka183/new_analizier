@@ -1,10 +1,8 @@
 package models
 
-import "time"
-
 type Traffic struct {
 	ID              uint   `json:"id" gorm:"primaryKey"`
-	UploadID        *uint  `json:"upload_id" gorm:"index"` // Привязка к конкретной загрузке/анализу
+	UploadID        uint   `json:"upload_id" gorm:"index"`
 	FlowID          string `json:"flow_id"`
 	Timestamp       string `json:"timestamp"`
 	Interface       string `json:"interface"`
@@ -31,7 +29,7 @@ type Traffic struct {
 	CntPSH           int       `json:"cnt_psh"`
 	CntRST           int       `json:"cnt_rst"`
 	CntURG           int       `json:"cnt_urg"`
-	Anomalies        []Anomaly `gorm:"foreignKey:TrafficID;constraint:OnDelete:CASCADE;" json:"anomalies"`
+	Anomalies        []Anomaly `gorm:"foreignKey:TrafficID" json:"anomalies"`
 }
 
 type TrafficDB struct {
@@ -39,17 +37,8 @@ type TrafficDB struct {
 
 type Anomaly struct {
 	ID          uint   `gorm:"primarykey" json:"id"`
-	TrafficID   uint   `json:"traffic_id" gorm:"index"`
+	TrafficID   uint   `json:"traffic_id"`
 	AnomalyType string `json:"anomaly_type"`
-}
-
-// Upload model tracks PCAP file upload and analysis history
-type Upload struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	Filename   string    `json:"filename"`
-	UploadedAt time.Time `json:"uploaded_at"`
-	FlowCount  int       `json:"flow_count"`
-	Summary    string    `json:"summary"` // Хранит UploadSummary в виде JSON-строки
 }
 
 // User model for role-based access (user/admin)
@@ -60,6 +49,15 @@ type User struct {
 	Role     string `json:"role" gorm:"default:user"` // "user" or "admin"
 }
 
+// Upload model for file history
+type Upload struct {
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	Filename   string `json:"filename"`
+	UploadedAt string `json:"uploaded_at"`
+	FlowCount  int    `json:"flow_count"`
+	Summary    string `json:"summary"`
+}
+
 // TrafficFilter holds all supported server-side filter parameters
 type TrafficFilter struct {
 	SourceIP      string
@@ -67,6 +65,5 @@ type TrafficFilter struct {
 	Port          string
 	AnomalyType   string
 	Protocol      string
-	Flags         string
-	UploadID      *uint
+	UploadID      string
 }

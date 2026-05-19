@@ -15,18 +15,9 @@ type TrafficRepository interface {
 	GetTrafficWithFilter(limit int, offset int, filter models.TrafficFilter) ([]models.Traffic, error)
 	CountTraffic(filter models.TrafficFilter) (int64, error)
 	WriteFlowAnomaly() error
-
-	// Методы для Upload (истории анализов файлов)
-	CreateUpload(upload *models.Upload) error
-	GetUploads() ([]models.Upload, error)
-	GetUploadByID(id uint) (*models.Upload, error)
-	UpdateUpload(upload *models.Upload) error
-	DeleteUpload(id uint) error
-
 	// Методы для администрирования
 	DeleteAllTraffic() error
 	ResetDatabase() error
-
 	// Методы для пользователей
 	CreateUser(user *models.User) error
 	GetUserByUsername(username string) (*models.User, error)
@@ -41,6 +32,7 @@ func NewPostgresTrafficRepo(db *gorm.DB) TrafficRepository {
 }
 
 func (r *postgresTrafficRepo) Create(traffic *models.Traffic) error {
+
 	tx := r.db.Create(traffic)
 	if tx.Error != nil {
 		return tx.Error
@@ -49,7 +41,10 @@ func (r *postgresTrafficRepo) Create(traffic *models.Traffic) error {
 }
 
 func (r *postgresTrafficRepo) CreateBulk(traffics []*models.Traffic) error {
-	tx := r.db.CreateInBatches(traffics, 1000)
+	if len(traffics) == 0 {
+		return nil
+	}
+	tx := r.db.CreateInBatches(traffics, 100)
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -81,9 +76,6 @@ func (r *postgresTrafficRepo) GetTraffic(limit int, offset int) ([]models.Traffi
 
 // applyFilters applies TrafficFilter conditions to a GORM query
 func (r *postgresTrafficRepo) applyFilters(query *gorm.DB, filter models.TrafficFilter) *gorm.DB {
-	if filter.UploadID != nil {
-		query = query.Where("upload_id = ?", *filter.UploadID)
-	}
 	if filter.SourceIP != "" {
 		query = query.Where("source_ip LIKE ?", "%"+filter.SourceIP+"%")
 	}
@@ -96,8 +88,8 @@ func (r *postgresTrafficRepo) applyFilters(query *gorm.DB, filter models.Traffic
 	if filter.Protocol != "" {
 		query = query.Where("protocol = ?", filter.Protocol)
 	}
-	if filter.Flags != "" {
-		query = query.Where("flags LIKE ?", "%"+filter.Flags+"%")
+	if filter.UploadID != "" {
+		query = query.Where("upload_id = ?", filter.UploadID)
 	}
 	if filter.AnomalyType != "" {
 		if filter.AnomalyType == "None" {
@@ -112,7 +104,8 @@ func (r *postgresTrafficRepo) applyFilters(query *gorm.DB, filter models.Traffic
 
 func (r *postgresTrafficRepo) GetTrafficWithFilter(limit int, offset int, filter models.TrafficFilter) ([]models.Traffic, error) {
 	var traffic []models.Traffic
-	query := r.db.Model(&models.Traffic{}).Preload("Anomalies")
+	query := r.db.Model(&models.Traffic{}).
+		Preload("Anomalies")
 
 	query = r.applyFilters(query, filter)
 
@@ -138,51 +131,18 @@ func (r *postgresTrafficRepo) CountTraffic(filter models.TrafficFilter) (int64, 
 	return count, nil
 }
 
-// --- Методы для Upload ---
-
-func (r *postgresTrafficRepo) CreateUpload(upload *models.Upload) error {
-	return r.db.Create(upload).Error
-}
-
-func (r *postgresTrafficRepo) GetUploads() ([]models.Upload, error) {
-	var uploads []models.Upload
-	err := r.db.Order("uploaded_at DESC").Find(&uploads).Error
-	return uploads, err
-}
-
-func (r *postgresTrafficRepo) GetUploadByID(id uint) (*models.Upload, error) {
-	var upload models.Upload
-	err := r.db.First(&upload, id).Error
-	return &upload, err
-}
-
-func (r *postgresTrafficRepo) UpdateUpload(upload *models.Upload) error {
-	return r.db.Save(upload).Error
-}
-
-func (r *postgresTrafficRepo) DeleteUpload(id uint) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Каскадно удаляем аномалии для трафика, связанного с этой загрузке
-		if err := tx.Exec("DELETE FROM anomalies WHERE traffic_id IN (SELECT id FROM traffics WHERE upload_id = ?)", id).Error; err != nil {
-			return err
-		}
-		// Удаляем сам трафик
-		if err := tx.Where("upload_id = ?", id).Delete(&models.Traffic{}).Error; err != nil {
-			return err
-		}
-		// Удаляем запись загрузки
-		return tx.Delete(&models.Upload{}, id).Error
-	})
-}
-
 // DeleteAllTraffic удаляет все записи трафика и аномалий (очистка БД)
 func (r *postgresTrafficRepo) DeleteAllTraffic() error {
 	// Сначала удаляем все аномалии
-	if err := r.db.Exec("DELETE FROM anomalies").Error; err != nil {
+	if err := r.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Anomaly{}).Error; err != nil {
 		return err
 	}
 	// Затем удаляем весь трафик
-	if err := r.db.Exec("DELETE FROM traffics").Error; err != nil {
+	if err := r.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Traffic{}).Error; err != nil {
+		return err
+	}
+	// Также удаляем историю загрузок
+	if err := r.db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Upload{}).Error; err != nil {
 		return err
 	}
 	return nil
@@ -201,7 +161,7 @@ func (r *postgresTrafficRepo) ResetDatabase() error {
 		return err
 	}
 	// Пересоздаём таблицы
-	if err := r.db.AutoMigrate(&models.Upload{}, &models.Traffic{}, &models.Anomaly{}); err != nil {
+	if err := r.db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.Upload{}); err != nil {
 		return err
 	}
 	return nil

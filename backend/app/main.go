@@ -7,13 +7,11 @@ import (
 	"analizier/backend/src/service"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,7 +45,7 @@ type App struct {
 
 func NewApp(db *gorm.DB) *App {
 	router := gin.Default()
-	router.MaxMultipartMemory = 512 << 20 // Увеличено до 512 МБ для больших PCAP
+	router.MaxMultipartMemory = 500 << 20
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
@@ -88,14 +86,11 @@ func (a *App) SetupRouter() {
 		api.POST("/traffic", a.handlePostTraffic)
 		api.GET("/traffic", a.handleGetTraffic)
 		api.GET("/traffic/:id", a.handleGetTrafficByID)
-
-		// Управление загрузками и историей
 		api.POST("/upload", a.handleUpload)
 		api.GET("/uploads", a.handleGetUploads)
 		api.GET("/uploads/:id", a.handleGetUploadByID)
+		api.GET("/uploads/:id/download", a.handleDownloadUpload)
 		api.DELETE("/uploads/:id", a.handleDeleteUpload)
-		api.GET("/uploads/:id/progress", a.handleGetProgress)
-
 		api.POST("/login", a.handleLogin)
 
 		// Администраторские эндпоинты
@@ -187,160 +182,140 @@ func (a *App) handleUpload(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Создаём запись загрузки в БД
-	upload := models.Upload{
-		Filename:   file.Filename,
-		UploadedAt: time.Now(),
-		Summary:    "{}",
-	}
-	if err := a.TrafficRepo.CreateUpload(&upload); err != nil {
-		c.JSON(500, gin.H{"error": "Failed to register upload: " + err.Error()})
+	path := "files/" + file.Filename
+	if err := os.MkdirAll("files", os.ModePerm); err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create files directory: " + err.Error()})
 		return
 	}
-
-	// Сохраняем файл
-	path := fmt.Sprintf("files/%d_%s", upload.ID, file.Filename)
 	if err = c.SaveUploadedFile(file, path); err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	fmt.Printf("Uploading file: %s with upload_id: %d\n", path, upload.ID)
+	fmt.Printf("Uploading file: %s\n", path)
 
-	// Предварительно регистрируем канал прогресса, чтобы избежать race condition
-	a.TrafficService.RegisterProgress(upload.ID)
+	// 1. Сначала создаём запись об импорте в БД, чтобы получить ID
+	uploadRecord := models.Upload{
+		Filename:   file.Filename,
+		UploadedAt: time.Now().Format(time.RFC3339),
+		FlowCount:  0,
+		Summary:    "",
+	}
+	if err := a.DB.Create(&uploadRecord).Error; err != nil {
+		os.Remove(path)
+		c.JSON(500, gin.H{"error": "Failed to create upload record: " + err.Error()})
+		return
+	}
 
-	// Запускаем асинхронный анализ в фоне
-	go func(filename string, uID uint) {
-		a.TrafficService.PipelineAsync(filename, uID)
-	}(path, upload.ID)
+	// 2. Анализируем файл И сохраняем в БД, связывая с uploadRecord.ID
+	results, err := a.TrafficService.Pipeline(path, uploadRecord.ID)
+	if err != nil {
+		// В случае ошибки удаляем запись об импорте и файл
+		a.DB.Delete(&models.Upload{}, uploadRecord.ID)
+		os.Remove(path)
+		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
+		return
+	}
+	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
+
+	totalPackets := 0
+	for _, r := range results {
+		totalPackets += r.Packets
+	}
+
+	// 3. Обновляем информацию в записи об импорте
+	uploadRecord.FlowCount = len(results)
+	uploadRecord.Summary = fmt.Sprintf(`{"packets": %d}`, totalPackets)
+	a.DB.Save(&uploadRecord)
 
 	c.JSON(200, gin.H{
-		"status":    "processing",
-		"upload_id": upload.ID,
+		"status": "analyzed",
+		"data":   results,
+		"total":  len(results),
 	})
 }
 
-func (a *App) handleGetProgress(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
-		return
-	}
-	uploadID := uint(id)
-
-	upload, err := a.TrafficRepo.GetUploadByID(uploadID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
-		return
-	}
-
-	// Если анализ уже завершен, сразу отдаем done
-	if upload.FlowCount > 0 || upload.Summary != "{}" {
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
-		c.Writer.Header().Set("Cache-Control", "no-cache")
-		c.Writer.Header().Set("Connection", "keep-alive")
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Flush()
-
-		doneMsg, _ := json.Marshal(service.ProgressUpdate{Phase: "done", Progress: 100})
-		fmt.Fprintf(c.Writer, "data: %s\n\n", string(doneMsg))
-		c.Writer.Flush()
-		return
-	}
-
-	ch := a.TrafficService.RegisterProgress(uploadID)
-
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-	c.Writer.Flush()
-
-	clientGone := c.Writer.CloseNotify()
-
-	for {
-		select {
-		case <-clientGone:
-			return
-		case update := <-ch:
-			data, _ := json.Marshal(update)
-			fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
-			c.Writer.Flush()
-			if update.Phase == "done" || update.Phase == "error" {
-				a.TrafficService.UnregisterProgress(uploadID)
-				return
-			}
-		}
-	}
-}
-
 func (a *App) handleGetUploads(c *gin.Context) {
-	uploads, err := a.TrafficRepo.GetUploads()
-	if err != nil {
+	var uploads []models.Upload
+	if err := a.DB.Order("id desc").Find(&uploads).Error; err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-
-	type uploadResp struct {
-		models.Upload
-		SummaryRaw json.RawMessage `json:"summary"`
-	}
-	var res []uploadResp
-	for _, u := range uploads {
-		r := uploadResp{Upload: u}
-		if u.Summary != "" {
-			r.SummaryRaw = json.RawMessage(u.Summary)
-		} else {
-			r.SummaryRaw = json.RawMessage("{}")
-		}
-		res = append(res, r)
-	}
-	c.JSON(200, res)
+	c.JSON(200, uploads)
 }
 
 func (a *App) handleGetUploadByID(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
+	id := c.Param("id")
+	var upload models.Upload
+	if err := a.DB.First(&upload, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
 		return
 	}
-
-	upload, err := a.TrafficRepo.GetUploadByID(uint(id))
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "upload not found"})
-		return
-	}
-
-	type uploadResp struct {
-		*models.Upload
-		SummaryRaw json.RawMessage `json:"summary"`
-	}
-	r := uploadResp{Upload: upload}
-	if upload.Summary != "" {
-		r.SummaryRaw = json.RawMessage(upload.Summary)
-	} else {
-		r.SummaryRaw = json.RawMessage("{}")
-	}
-	c.JSON(200, r)
+	c.JSON(200, upload)
 }
 
 func (a *App) handleDeleteUpload(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id parameter"})
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
 		return
 	}
 
-	if err := a.TrafficRepo.DeleteUpload(uint(id)); err != nil {
+	var upload models.Upload
+	if err := a.DB.First(&upload, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
+		return
+	}
+
+	// 1. Удаляем физический файл с диска
+	path := "files/" + upload.Filename
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: failed to delete file %s: %v\n", path, err)
+	}
+
+	// 2. Находим и каскадно удаляем все записи Traffic и Anomalies, связанные с этой загрузкой
+	var trafficIDs []uint
+	a.DB.Model(&models.Traffic{}).Where("upload_id = ?", id).Pluck("id", &trafficIDs)
+	if len(trafficIDs) > 0 {
+		a.DB.Where("traffic_id IN ?", trafficIDs).Delete(&models.Anomaly{})
+		a.DB.Where("id IN ?", trafficIDs).Delete(&models.Traffic{})
+	}
+
+	// 3. Удаляем саму запись из таблицы uploads
+	if err := a.DB.Delete(&models.Upload{}, id).Error; err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(200, gin.H{"status": "deleted"})
+}
+
+func (a *App) handleDownloadUpload(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"error": "invalid id parameter"})
+		return
+	}
+
+	var upload models.Upload
+	if err := a.DB.First(&upload, id).Error; err != nil {
+		c.JSON(404, gin.H{"error": "upload not found"})
+		return
+	}
+
+	path := "files/" + upload.Filename
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		c.JSON(404, gin.H{"error": "physical file not found on disk"})
+		return
+	}
+
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", "attachment; filename="+upload.Filename)
+	c.Header("Content-Type", "application/octet-stream")
+	c.File(path)
 }
 
 func (a *App) handlePostTraffic(c *gin.Context) {
@@ -350,23 +325,13 @@ func (a *App) handlePostTraffic(c *gin.Context) {
 		return
 	}
 
-	// Автоматический вывод протокола, если он не передан
+	// Автоматический вывод протокола, если он не передан (например, из старых тестовых скриптов)
 	if traffic.Protocol == "" {
 		if traffic.Flags != "" || traffic.SourcePort != "" || traffic.DestinationPort != "" {
 			traffic.Protocol = "TCP"
 		} else {
 			traffic.Protocol = "Other"
 		}
-	}
-
-	// Преобразуем Timestamp со space в формат ISO 8601 (T и Z)
-	if traffic.Timestamp != "" && strings.Contains(traffic.Timestamp, " ") {
-		traffic.Timestamp = strings.Replace(traffic.Timestamp, " ", "T", 1)
-		if !strings.HasSuffix(traffic.Timestamp, "Z") {
-			traffic.Timestamp += ".000Z"
-		}
-	} else if traffic.Timestamp != "" && !strings.HasSuffix(traffic.Timestamp, "Z") {
-		traffic.Timestamp += ".000Z"
 	}
 
 	// Если передана аномалия "None", то удаляем ее из списка, чтобы не писать в таблицу anomalies
@@ -398,14 +363,6 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 	}
 	offset := (pageInt - 1) * limitInt
 
-	var uploadIDPtr *uint
-	if uidStr := c.DefaultQuery("upload_id", ""); uidStr != "" {
-		if uid, err := strconv.ParseUint(uidStr, 10, 64); err == nil {
-			val := uint(uid)
-			uploadIDPtr = &val
-		}
-	}
-
 	// Собираем фильтры из query params
 	filter := models.TrafficFilter{
 		SourceIP:      c.DefaultQuery("source_ip", ""),
@@ -413,8 +370,7 @@ func (a *App) handleGetTraffic(c *gin.Context) {
 		Port:          c.DefaultQuery("port", ""),
 		AnomalyType:   c.DefaultQuery("anomaly", ""),
 		Protocol:      c.DefaultQuery("protocol", ""),
-		Flags:         c.DefaultQuery("flags", ""),
-		UploadID:      uploadIDPtr,
+		UploadID:      c.DefaultQuery("upload_id", ""),
 	}
 
 	traffic, err := a.TrafficRepo.GetTrafficWithFilter(limitInt, offset, filter)
@@ -459,6 +415,8 @@ func (a *App) handleDeleteTraffic(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+	os.RemoveAll("files")
+	os.MkdirAll("files", os.ModePerm)
 	c.JSON(200, gin.H{"status": "all traffic data deleted"})
 }
 
@@ -469,6 +427,8 @@ func (a *App) handleReset(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
+	os.RemoveAll("files")
+	os.MkdirAll("files", os.ModePerm)
 	c.JSON(200, gin.H{"status": "database reset to default state"})
 }
 
@@ -554,6 +514,7 @@ func (a *App) runBroadcast() {
 func seedDefaultAdmin(repo repository.TrafficRepository) {
 	_, err := repo.GetUserByUsername("admin")
 	if err != nil {
+		// Пользователь не найден, создаём
 		admin := &models.User{
 			Username: "admin",
 			Password: hashPassword("admin"),
@@ -563,6 +524,7 @@ func seedDefaultAdmin(repo repository.TrafficRepository) {
 		fmt.Println("Default admin user created (admin/admin)")
 	}
 
+	// Создаём обычного пользователя
 	_, err = repo.GetUserByUsername("user")
 	if err != nil {
 		user := &models.User{
@@ -588,6 +550,7 @@ func main() {
 	var db *gorm.DB
 	var err error
 
+	// Повторяем попытки подключения (для docker-compose, когда postgres ещё не запущен полностью)
 	for i := 0; i < 15; i++ {
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 		if err == nil {
@@ -601,11 +564,11 @@ func main() {
 		panic(fmt.Errorf("could not connect to database after retries: %v", err))
 	}
 
-	// Мигрируем таблицы, включая Upload
-	db.AutoMigrate(&models.Upload{}, &models.Traffic{}, &models.Anomaly{}, &models.User{})
+	db.AutoMigrate(&models.Traffic{}, &models.Anomaly{}, &models.User{}, &models.Upload{})
 
 	app := NewApp(db)
 
+	// Создаём пользователей по умолчанию
 	seedDefaultAdmin(app.TrafficRepo)
 
 	app.SetupRouter()
