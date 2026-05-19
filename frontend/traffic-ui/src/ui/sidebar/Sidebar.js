@@ -41,12 +41,12 @@ function Sidebar({ systemStatus, processedFiles, flowsCount }) {
           </NavLink>
         ) : null}
         <NavLink
-          to="/sessions"
+          to="/analyzed-files"
           className={({ isActive }) =>
             isActive ? "sidebar__link sidebar__link--active" : "sidebar__link"
           }
         >
-          Sessions
+          History
         </NavLink>
         <NavLink
           to="/settings"

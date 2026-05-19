@@ -8,43 +8,28 @@ import TotalFlowsCard from "./ui/total-flows-card";
 import SectionContainer from "./ui/section-container";
 import ThemeToggle from "./ui/theme-toggle/ThemeToggle";
 import Sidebar from "./ui/sidebar/Sidebar";
-import SessionsPage from "./pages/SessionsPage";
+import AnalyzedFilesPage from "./pages/AnalyzedFilesPage";
 import AnalyzeFilePage from "./pages/AnalyzeFilePage";
 import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
 import { DEFAULT_HOME_ROUTE } from "./constants/trafficApp";
-import { useFilteredTrafficQuery } from "./hooks/useFilteredTrafficQuery";
 import { useTrafficDataset } from "./hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "./hooks/useTrafficDashboardView";
 import "./App.scss";
 
 function App() {
   const location = useLocation();
-  const isSessionsRoute = location.pathname.startsWith("/sessions");
 
   const [processedFilesCount] = React.useState(0);
   const { allData, fetchAllData } = useTrafficDataset();
-
-  const sessionsQuery = useFilteredTrafficQuery({ enabled: isSessionsRoute });
 
   const dashboardView = useTrafficDashboardView(allData, {
     tableBaseOrder: "chronological",
   });
 
-  const sessionsTableView = useTrafficDashboardView(sessionsQuery.pageRows, {
-    tableBaseOrder: "newest",
-    serverPagination: true,
-    serverTotalRows: sessionsQuery.totalRows,
-    itemsPerPage: sessionsQuery.itemsPerPage,
-    currentPage: sessionsQuery.currentPage,
-  });
-
-  const { refetch: refetchSessions } = sessionsQuery;
-
   const handleAfterAdminMutation = React.useCallback(() => {
     fetchAllData();
-    refetchSessions();
-  }, [fetchAllData, refetchSessions]);
+  }, [fetchAllData]);
 
   const systemStatus = "OK";
 
@@ -63,7 +48,9 @@ function App() {
                 ? "Вход"
                 : location.pathname === "/settings"
                   ? "Настройки"
-                  : "Network Traffic"}
+                  : location.pathname === "/analyzed-files"
+                    ? "History"
+                    : "Network Traffic"}
             </h2>
             <ThemeToggle />
           </div>
@@ -123,34 +110,10 @@ function App() {
                 </>
               }
             />
+            <Route path="/analyzed-files" element={<AnalyzedFilesPage />} />
             <Route
               path="/sessions"
-              element={
-                <SessionsPage
-                  paginatedTableGroups={sessionsTableView.paginatedTableGroups}
-                  sortColumn={sessionsTableView.sortColumn}
-                  sortDirection={sessionsTableView.sortDirection}
-                  onSortColumn={sessionsTableView.cycleTableSort}
-                  filterSource={sessionsQuery.filterSource}
-                  filterDestination={sessionsQuery.filterDestination}
-                  filterPort={sessionsQuery.filterPort}
-                  filterAnomaly={sessionsQuery.filterAnomaly}
-                  onFilterSourceChange={sessionsQuery.setFilterSource}
-                  onFilterDestinationChange={sessionsQuery.setFilterDestination}
-                  onFilterPortChange={sessionsQuery.setFilterPort}
-                  onFilterAnomalyChange={sessionsQuery.setFilterAnomaly}
-                  onClearFilters={sessionsQuery.clearFilters}
-                  currentPage={sessionsQuery.currentPage}
-                  totalPages={sessionsQuery.totalPages}
-                  totalRows={sessionsQuery.totalRows}
-                  itemsPerPage={sessionsQuery.itemsPerPage}
-                  onItemsPerPageChange={sessionsQuery.setItemsPerPage}
-                  onPrevPage={sessionsQuery.goPrev}
-                  onNextPage={sessionsQuery.goNext}
-                  loading={sessionsQuery.loading}
-                  fetchError={sessionsQuery.fetchError}
-                />
-              }
+              element={<Navigate to="/analyzed-files" replace />}
             />
             <Route path="/analyze-file" element={<AnalyzeFilePage />} />
             <Route

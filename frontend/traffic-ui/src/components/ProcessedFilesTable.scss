@@ -1,0 +1,29 @@
+@use "../styles/vars.scss" as *;
+
+.processed-files-table__wrap {
+  overflow-x: auto;
+  margin-bottom: 4px;
+}
+
+.processed-files-table__status {
+  margin: 0 0 12px;
+  font-size: $font-size-small;
+  opacity: 0.9;
+
+  &--error {
+    color: var(--danger-color, #c62828);
+  }
+}
+
+.processed-files-table__row {
+  cursor: pointer;
+
+  &:hover td {
+    background-color: color-mix(in srgb, var(--main-color) 8%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--button-border-color);
+    outline-offset: -2px;
+  }
+}
