@@ -180,19 +180,6 @@
     background-color: transparent;
   }
 
-  &__row--p2mp {
-    background-color: transparent;
-  }
-
-  &__row--flow {
-    background-color: transparent;
-  }
-
-  &__row--virus {
-    background-color: transparent;
-    color: inherit;
-  }
-
   &__row--none {
     background-color: transparent;
   }
@@ -228,21 +215,6 @@
 
   &__anomaly--worm {
     background-color: var(--table-row-worm-color);
-    color: var(--button-text-color);
-  }
-
-  &__anomaly--p2mp {
-    background-color: var(--table-row-p2mp-color);
-    color: var(--text-color);
-  }
-
-  &__anomaly--flow {
-    background-color: $packet-color;
-    color: var(--button-text-color);
-  }
-
-  &__anomaly--virus {
-    background-color: var(--table-row-virus-color);
     color: var(--button-text-color);
   }
 

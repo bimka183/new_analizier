@@ -4,9 +4,6 @@ const ANOMALY_TYPES = [
   "Network Overload",
   "Network/Port Scanning",
   "Worm Activity",
-  "Point-to-Multipoint",
-  "Flow Switching",
-  "Confirmed Virus Activity",
 ];
 
 function hashString(value) {

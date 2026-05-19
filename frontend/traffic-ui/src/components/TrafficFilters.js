@@ -49,9 +49,6 @@ function TrafficFilters({
         <option value="Network Overload">Overload</option>
         <option value="Network/Port Scanning">Port Scanning</option>
         <option value="Worm Activity">Worm</option>
-        <option value="Confirmed Virus Activity">Virus</option>
-        <option value="Point-to-Multipoint">P2MP</option>
-        <option value="Flow Switching">Flow Switching</option>
       </select>
 
       <Button
