@@ -1,10 +1,58 @@
 @use "../../styles/vars.scss" as *;
 
 .theme-toggle {
-  background-color: transparent;
-  color: var(--text-color);
-  border-color: var(--control-border-color);
-  min-width: 140px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.theme-toggle__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+
+  &:focus-visible + .theme-toggle__track {
+    outline: 2px solid var(--main-color);
+    outline-offset: 2px;
+  }
+}
+
+.theme-toggle__track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 56px;
+  height: 28px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid var(--control-border-color);
+  background-color: var(--background-color-secondary);
+}
+
+.theme-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: var(--button-color);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease;
+  pointer-events: none;
+}
+
+.theme-toggle__input:checked + .theme-toggle__track .theme-toggle__thumb {
+  transform: translateX(28px);
 }
 
 .theme-toggle__icon {
@@ -12,16 +60,43 @@
   height: 14px;
   display: block;
   object-fit: contain;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.45;
   filter: brightness(0) saturate(100%) invert(13%) sepia(16%) saturate(1250%)
     hue-rotate(176deg) brightness(92%) contrast(96%);
+  transition: opacity 0.2s ease;
 }
 
 [data-theme="dark"] .theme-toggle__icon {
   filter: brightness(0) saturate(100%) invert(100%);
 }
 
+.theme-toggle__input:not(:checked) + .theme-toggle__track .theme-toggle__icon--sun {
+  opacity: 1;
+}
+
+.theme-toggle__input:checked + .theme-toggle__track .theme-toggle__icon--moon {
+  opacity: 1;
+}
+
 @media (max-width: $mobile-max) {
-  .theme-toggle {
-    min-width: auto;
+  .theme-toggle__track {
+    width: 52px;
+    height: 26px;
+  }
+
+  .theme-toggle__thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .theme-toggle__input:checked + .theme-toggle__track .theme-toggle__thumb {
+    transform: translateX(26px);
+  }
+
+  .theme-toggle__icon {
+    width: 12px;
+    height: 12px;
   }
 }

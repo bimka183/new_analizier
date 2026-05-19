@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import Button from "../button";
 import "./ThemeToggle.scss";
 
 const THEME_STORAGE_KEY = "traffic-ui-theme";
@@ -21,32 +20,36 @@ function ThemeToggle() {
   }, [theme]);
 
   const isDarkTheme = theme === THEME_DARK;
-  const themeIconPath = isDarkTheme ? "/svg/sun.svg" : "/svg/moon.svg";
   const themeLabel = isDarkTheme ? "Light theme" : "Dark theme";
 
-  const handleThemeToggle = () => {
-    setTheme((currentTheme) =>
-      currentTheme === THEME_DARK ? THEME_LIGHT : THEME_DARK,
-    );
+  const handleChange = (event) => {
+    setTheme(event.target.checked ? THEME_DARK : THEME_LIGHT);
   };
 
   return (
-    <Button
-      className="theme-toggle"
-      onClick={handleThemeToggle}
-      aria-label={themeLabel}
-      title={themeLabel}
-      icon={
+    <label className="theme-toggle" title={themeLabel}>
+      <input
+        type="checkbox"
+        role="switch"
+        className="theme-toggle__input"
+        checked={isDarkTheme}
+        onChange={handleChange}
+        aria-label={themeLabel}
+      />
+      <span className="theme-toggle__track" aria-hidden="true">
         <img
-          src={themeIconPath}
+          src="/svg/sun.svg"
           alt=""
-          className="theme-toggle__icon"
-          aria-hidden="true"
+          className="theme-toggle__icon theme-toggle__icon--sun"
         />
-      }
-    >
-      {themeLabel}
-    </Button>
+        <img
+          src="/svg/moon.svg"
+          alt=""
+          className="theme-toggle__icon theme-toggle__icon--moon"
+        />
+        <span className="theme-toggle__thumb" />
+      </span>
+    </label>
   );
 }
 
