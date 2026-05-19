@@ -108,31 +108,37 @@ func flowIntersectsTimeWindow(f *pkt.FlowInfo, w pkt.TimeWindow) bool {
 
 // runWindowDetectors вызывает DDoS с потоками и остальные оконные детекторы без смены их API.
 func (s *TrafficService) runWindowDetectors(windows []pkt.TimeWindow, flows map[string]*pkt.FlowInfo, capDur time.Duration) map[string]string {
-	anomalousFlows := make(map[string]string)
-	for _, det := range s.detectors {
-		var anomalousWins []pkt.TimeWindow
-		switch t := det.(type) {
-		case *detector.DDoSDetector:
-			anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
-		default:
-			if w, ok := det.(interface {
-				AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
-			}); ok {
-				anomalousWins = w.AnalyzeWindows(windows)
-			}
-		}
-		for _, win := range anomalousWins {
-			for flowID, flow := range flows {
-				if len(flow.Packets) == 0 {
-					continue
-				}
-				if flowIntersectsTimeWindow(flow, win) {
-					anomalousFlows[flowID] = det.Name()
-				}
-			}
-		}
-	}
-	return anomalousFlows
+    anomalousFlows := make(map[string]string)
+    for _, det := range s.detectors {
+        var anomalousWins []pkt.TimeWindow
+        
+        switch t := det.(type) {
+        case *detector.DDoSDetector:
+            anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
+        case *detector.OverloadDetector:
+            anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
+        case *detector.WormDetector:
+            anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
+        default:
+            if w, ok := det.(interface {
+                AnalyzeWindows([]pkt.TimeWindow) []pkt.TimeWindow
+            }); ok {
+                anomalousWins = w.AnalyzeWindows(windows)
+            }
+        }
+        
+        for _, win := range anomalousWins {
+            for flowID, flow := range flows {
+                if len(flow.Packets) == 0 {
+                    continue
+                }
+                if flowIntersectsTimeWindow(flow, win) {
+                    anomalousFlows[flowID] = det.Name()
+                }
+            }
+        }
+    }
+    return anomalousFlows
 }
 
 type TrafficService struct {
@@ -159,65 +165,76 @@ func NewTrafficService(
 // analyzeFile выполняет парсинг и анализ файла, возвращает список моделей Traffic.
 // Общий код для Pipeline и PipelineAnalyzeOnly.
 func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.Traffic, error) {
-	parser := prs.NewParser()
-	packets, err := parser.Parse(filename)
-	if err != nil {
-		return nil, err
-	}
-	flows := divideByFlow(packets)
+    parser := prs.NewParser()
+    packets, err := parser.Parse(filename)
+    if err != nil {
+        return nil, err
+    }
+    flows := divideByFlow(packets)
+    
+    // ========== ВАЖНО: ОБНОВЛЯЕМ СТАТИСТИКУ ПОТОКОВ ==========
+    for _, flow := range flows {
+        pkt.AnalyzeFlow(flow)
+    }
+    // ========================================================
+    
+    // Разбиваем на временные окна для DDoS и Overload детекторов
+    windows := pkt.SplitIntoWindows(packets, 10*time.Second)
 
-	// Разбиваем на временные окна для DDoS и Overload детекторов
-	windows := pkt.SplitIntoWindows(packets, 10*time.Second)
+    capDur := captureDurationFromPackets(packets)
 
-	capDur := captureDurationFromPackets(packets)
+    // Синхронный анализ окон: DDoS — AnalyzeWindowsWithFlows (агрегация по источнику);
+    // остальные — AnalyzeWindows; привязка потоков по пересечению времени окна с пакетами потока.
+    anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
-	// Синхронный анализ окон: DDoS — AnalyzeWindowsWithFlows (агрегация по источнику);
-	// остальные — AnalyzeWindows; привязка потоков по пересечению времени окна с пакетами потока.
-	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
+    var results []models.Traffic
 
-	var results []models.Traffic
+    for _, flow := range flows {
 
-	for _, flow := range flows {
+        trafficModel := MapFlowToTraffic(flow)
 
-		trafficModel := MapFlowToTraffic(flow)
+        // Per-flow детекторы (Worm, Virus)
+        for _, d := range s.detectors {
+            detRes := d.Analyze(flow.Stats)
+            if detRes.IsAnomaly {
+                trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+                    AnomalyType: detRes.Type.String(),
+                })
+            }
+        }
 
-		// Per-flow детекторы (Worm, Virus)
-		for _, d := range s.detectors {
-			detRes := d.Analyze(flow.Stats)
-			if detRes.IsAnomaly {
-				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
-					AnomalyType: detRes.Type.String(),
-				})
-			}
-		}
+        // FlowDetector'ы (P2MP, FlowSwitching и т.д.)
+        for _, fd := range s.flowDetectors {
+            detRes := fd.AnalyzeFlow(flow)
+            if detRes.IsAnomaly {
+                trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+                    AnomalyType: detRes.Type.String(),
+                })
+            }
+        }
 
-		// FlowDetector'ы (P2MP, FlowSwitching и т.д.)
-		for _, fd := range s.flowDetectors {
-			detRes := fd.AnalyzeFlow(flow)
-			if detRes.IsAnomaly {
-				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
-					AnomalyType: detRes.Type.String(),
-				})
-			}
-		}
+        // DDoS/Overload/Worm аномалии из анализа окон
+        if detName, ok := anomalousFlows[flow.FlowID]; ok {
+            switch detName {
+            case "DDoSDetector":
+                trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+                    AnomalyType: detector.AnomalyDoS.String(),
+                })
+            case "OverloadDetector":
+                trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+                    AnomalyType: detector.AnomalyOverload.String(),
+                })
+            case "WormDetector":
+                trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+                    AnomalyType: detector.AnomalyWorm.String(),
+                })
+            }
+        }
 
-		// DDoS/Overload аномалии из анализа окон
-		if detName, ok := anomalousFlows[flow.FlowID]; ok {
-			if detName == "DDoSDetector" {
-				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
-					AnomalyType: detector.AnomalyDoS.String(),
-				})
-			} else if detName == "OverloadDetector" {
-				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
-					AnomalyType: detector.AnomalyOverload.String(),
-				})
-			}
-		}
+        results = append(results, trafficModel)
+    }
 
-		results = append(results, trafficModel)
-	}
-
-	return results, nil
+    return results, nil
 }
 
 // Pipeline — парсит файл, анализирует, СОХРАНЯЕТ в БД и отправляет в broadcast (для реал-тайм данных)

@@ -21,6 +21,8 @@ type PacketInfo struct {
 	DstPort       string    // Порт назначения
 	Length        int       // Длина
 	Flags         []string
+	Payload       []byte
+	TLS           *TLSInfo 
 }
 
 func PrintPacketInfo(info PacketInfo) {
@@ -46,6 +48,10 @@ func PrintPacketInfo(info PacketInfo) {
 	}
 
 	formatField("Длина пакета", fmt.Sprintf("%d байт", info.Length))
+	
+	if len(info.Payload) > 0 {
+		formatField("Payload размер", fmt.Sprintf("%d байт", len(info.Payload)))
+	}
 
 	fmt.Println(strings.Repeat("=", 50))
 	fmt.Println()

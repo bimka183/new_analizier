@@ -3,147 +3,279 @@ package detector
 import (
 	"analizier/backend/src/packet"
 	"math"
+	"time"
 )
 
 type OverloadDetector struct {
-	WindowSize        int     // количество окон для расчёта статистики (скользящее окно)
-	Sensitivity       float64 // коэффициент (сколько стандартных отклонений считать аномалией)
-	MinBPS            float64 // абсолютный минимальный порог BPS (игнорировать если ниже)
-	MinPPS            float64 // абсолютный минимальный порог PPS
-	UseAdaptive       bool    // использовать адаптивные пороги или фиксированные
-	FixedBPSThreshold float64 // фиксированный порог BPS (если UseAdaptive = false)
-	FixedPPSThreshold float64 // фиксированный порог PPS
+	WindowSize        int
+	Sensitivity       float64
+	MinBPS            float64
+	MinPPS            float64
+	UseAdaptive       bool
+	FixedBPSThreshold float64
+	FixedPPSThreshold float64
+
+	OverloadAbsoluteThreshold float64
+	OverloadGrowthFactor      float64
+
+	prevClientHelloCount float64
+	
+	ppsHistory              []float64
+	zScoreHistory           []float64
+	adaptiveThresholdActive bool
+	consecutiveCleanWindows int
 }
 
-// NewAdaptiveOverloadDetector создаёт адаптивный детектор с настройками по умолчанию
 func NewAdaptiveOverloadDetector(windowSize int, sensitivity float64) *OverloadDetector {
 	if windowSize <= 0 {
-		windowSize = 10
+		windowSize = 2
 	}
 	if sensitivity <= 0 {
-		sensitivity = 3.0 // 3 сигмы
+		sensitivity = 2.7
 	}
 	return &OverloadDetector{
-		WindowSize:  windowSize,
-		Sensitivity: sensitivity,
-		MinBPS:      1_000_000, // 0.5 МБ/с – ниже этого не считаем перегрузкой
-		MinPPS:      1000,      // 1000 пакетов/с
-		UseAdaptive: true,
+		WindowSize:                windowSize,
+		Sensitivity:               sensitivity,
+		MinBPS:                    100000,
+		MinPPS:                    200,
+		UseAdaptive:               true,
+		OverloadAbsoluteThreshold: 500,
+		OverloadGrowthFactor:      5.0,
+		ppsHistory:                make([]float64, 0, 30),
+		zScoreHistory:             make([]float64, 0, 3),
+		adaptiveThresholdActive:   false,
+		consecutiveCleanWindows:   0,
 	}
 }
 
-// NewFixedOverloadDetector создаёт детектор с фиксированными порогами (для обратной совместимости)
 func NewFixedOverloadDetector(bps, pps float64) *OverloadDetector {
 	return &OverloadDetector{
-		UseAdaptive:       false,
-		FixedBPSThreshold: bps,
-		FixedPPSThreshold: pps,
-		MinBPS:            0,
-		MinPPS:            0,
+		FixedBPSThreshold:         bps,
+		FixedPPSThreshold:         pps,
+		OverloadAbsoluteThreshold: 500,
+		OverloadGrowthFactor:      5.0,
+		ppsHistory:                make([]float64, 0, 30),
+		zScoreHistory:             make([]float64, 0, 3),
+		adaptiveThresholdActive:   false,
+		consecutiveCleanWindows:   0,
 	}
 }
 
-// Name возвращает имя детектора
 func (d *OverloadDetector) Name() string {
 	return "OverloadDetector"
 }
 
-// Analyze требуется интерфейсом Detector, но перегрузка выявляется на окнах
 func (d *OverloadDetector) Analyze(stats packet.FlowStats) DetectionResult {
 	return DetectionResult{IsAnomaly: false}
 }
 
-// AnalyzeWindows анализирует окна и возвращает аномальные (перегруженные)
+func (d *OverloadDetector) AnalyzeWindowsWithFlows(windows []packet.TimeWindow, flows map[string]*packet.FlowInfo, captureDuration time.Duration) []packet.TimeWindow {
+	return d.AnalyzeWindows(windows)
+}
+
 func (d *OverloadDetector) AnalyzeWindows(windows []packet.TimeWindow) []packet.TimeWindow {
 	if len(windows) == 0 {
 		return nil
 	}
 
-	if !d.UseAdaptive {
-		return d.analyzeFixed(windows)
+	d.enrichWindowsWithTLS(windows)
+
+	var overloaded []packet.TimeWindow
+	if d.UseAdaptive {
+		overloaded = d.analyzeAdaptive(windows)
+	} else {
+		overloaded = d.analyzeFixed(windows)
 	}
-	return d.analyzeAdaptive(windows)
+
+	tlsOverloaded := d.analyzeTLSClientHello(windows)
+	
+	return unionWindows(overloaded, tlsOverloaded)
 }
 
-// analyzeFixed – старый метод с фиксированными порогами
-func (d *OverloadDetector) analyzeFixed(windows []packet.TimeWindow) []packet.TimeWindow {
-	var overloaded []packet.TimeWindow
+func (d *OverloadDetector) enrichWindowsWithTLS(windows []packet.TimeWindow) {
+	for i := range windows {
+		windows[i].ClientHelloCount = float64(windows[i].Stats.TLSFlowCount)
+		if i > 0 {
+			windows[i].ClientHelloCountPrev = windows[i-1].ClientHelloCount
+		} else {
+			windows[i].ClientHelloCountPrev = d.prevClientHelloCount
+		}
+	}
+	if len(windows) > 0 {
+		d.prevClientHelloCount = windows[len(windows)-1].ClientHelloCount
+	}
+}
+
+func (d *OverloadDetector) analyzeTLSClientHello(windows []packet.TimeWindow) []packet.TimeWindow {
+	currentThreshold := d.getCurrentThreshold()
+	
+	overloaded := make([]packet.TimeWindow, 0)
 	for _, w := range windows {
-		s := w.Stats
-		if s.BPS > d.FixedBPSThreshold || s.PPS > d.FixedPPSThreshold {
+		if w.ClientHelloCount > currentThreshold {
+			overloaded = append(overloaded, w)
+			continue
+		}
+		prev := w.ClientHelloCountPrev
+		if prev < 1 {
+			prev = 1
+		}
+		if w.ClientHelloCount/prev > d.OverloadGrowthFactor {
 			overloaded = append(overloaded, w)
 		}
 	}
 	return overloaded
 }
 
-// analyzeAdaptive – адаптивный метод на основе скользящего среднего и стандартного отклонения
+func (d *OverloadDetector) analyzeFixed(windows []packet.TimeWindow) []packet.TimeWindow {
+	overloaded := make([]packet.TimeWindow, 0)
+	for _, w := range windows {
+		if w.Stats.BPS > d.FixedBPSThreshold || w.Stats.PPS > d.FixedPPSThreshold {
+			overloaded = append(overloaded, w)
+		}
+	}
+	return overloaded
+}
+
 func (d *OverloadDetector) analyzeAdaptive(windows []packet.TimeWindow) []packet.TimeWindow {
-	var overloaded []packet.TimeWindow
+	if len(windows) == 1 {
+		w := windows[0]
+		if w.Stats.BPS > d.MinBPS || w.Stats.PPS > d.MinPPS {
+			return windows
+		}
+		return nil
+	}
+	
+	if len(windows) < d.WindowSize {
+		return nil
+	}
 
-	// Для каждого окна, начиная с WindowSize-го, вычисляем порог по предыдущим окнам
-	for i := d.WindowSize - 1; i < len(windows); i++ {
-		// Берём предыдущие окна: от i-d.WindowSize+1 до i
-		start := i - d.WindowSize + 1
-		var bpsValues, ppsValues []float64
-		for j := start; j <= i; j++ {
-			bpsValues = append(bpsValues, windows[j].Stats.BPS)
-			ppsValues = append(ppsValues, windows[j].Stats.PPS)
+	overloaded := make([]packet.TimeWindow, 0)
+	
+	bpsHistory := make([]float64, 0, d.WindowSize)
+	ppsHistory := make([]float64, 0, d.WindowSize)
+	
+	for i := 0; i < d.WindowSize; i++ {
+		bpsHistory = append(bpsHistory, windows[i].Stats.BPS)
+		ppsHistory = append(ppsHistory, windows[i].Stats.PPS)
+		d.ppsHistory = append(d.ppsHistory, windows[i].Stats.PPS)
+	}
+
+	for i := d.WindowSize; i < len(windows); i++ {
+		currentWindow := windows[i]
+		currentPPS := currentWindow.Stats.PPS
+		
+		if len(d.ppsHistory) >= 10 {
+			zScore, zScoreValid := packet.ZScore(currentPPS, d.ppsHistory)
+			if zScoreValid {
+				d.zScoreHistory = append(d.zScoreHistory, zScore)
+				if len(d.zScoreHistory) > 3 {
+					d.zScoreHistory = d.zScoreHistory[1:]
+				}
+			}
+		}
+		
+		hasRecentZAbove2 := false
+		for _, z := range d.zScoreHistory {
+			if z > 2.0 {
+				hasRecentZAbove2 = true
+				break
+			}
+		}
+		
+		if hasRecentZAbove2 && !d.adaptiveThresholdActive {
+			d.adaptiveThresholdActive = true
+			d.consecutiveCleanWindows = 0
+		}
+		
+		if d.adaptiveThresholdActive {
+			d.consecutiveCleanWindows++
+			if d.consecutiveCleanWindows >= 5 {
+				d.adaptiveThresholdActive = false
+				d.consecutiveCleanWindows = 0
+			}
+		}
+		
+		avgBPS, stdBPS := meanStdDev(bpsHistory)
+		avgPPS, stdPPS := meanStdDev(ppsHistory)
+
+		thBPS := math.Max(avgBPS+d.Sensitivity*stdBPS, d.MinBPS)
+		thPPS := math.Max(avgPPS+d.Sensitivity*stdPPS, d.MinPPS)
+
+		if d.adaptiveThresholdActive {
+			thPPS = math.Max(thPPS*0.7, d.MinPPS)
+			thBPS = math.Max(thBPS*0.7, d.MinBPS)
 		}
 
-		// Вычисляем среднее и стандартное отклонение для BPS
-		avgBPS := average(bpsValues)
-		stdBPS := stdDev(bpsValues, avgBPS)
-
-		// То же для PPS
-		avgPPS := average(ppsValues)
-		stdPPS := stdDev(ppsValues, avgPPS)
-
-		// Порог = среднее + sensitivity * стандартное отклонение
-		thresholdBPS := avgBPS + d.Sensitivity*stdBPS
-		thresholdPPS := avgPPS + d.Sensitivity*stdPPS
-
-		// Применяем абсолютные минимальные пороги (чтобы не срабатывало на очень низком трафике)
-		if thresholdBPS < d.MinBPS {
-			thresholdBPS = d.MinBPS
-		}
-		if thresholdPPS < d.MinPPS {
-			thresholdPPS = d.MinPPS
+		if currentWindow.Stats.BPS > thBPS || currentWindow.Stats.PPS > thPPS {
+			overloaded = append(overloaded, currentWindow)
 		}
 
-		currentBPS := windows[i].Stats.BPS
-		currentPPS := windows[i].Stats.PPS
-
-		if currentBPS > thresholdBPS || currentPPS > thresholdPPS {
-			overloaded = append(overloaded, windows[i])
+		bpsHistory = append(bpsHistory[1:], currentWindow.Stats.BPS)
+		ppsHistory = append(ppsHistory[1:], currentPPS)
+		
+		d.ppsHistory = append(d.ppsHistory, currentPPS)
+		if len(d.ppsHistory) > 30 {
+			d.ppsHistory = d.ppsHistory[1:]
 		}
 	}
 
 	return overloaded
 }
 
-// average вычисляет среднее арифметическое
-func average(values []float64) float64 {
+func (d *OverloadDetector) getCurrentThreshold() float64 {
+	if d.adaptiveThresholdActive {
+		return d.OverloadAbsoluteThreshold * 0.7
+	}
+	return d.OverloadAbsoluteThreshold
+}
+
+func unionWindows(a, b []packet.TimeWindow) []packet.TimeWindow {
+	seen := make(map[int64]struct{})
+	result := make([]packet.TimeWindow, 0, len(a)+len(b))
+	for _, w := range a {
+		key := w.StartTime.UnixNano()
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			result = append(result, w)
+		}
+	}
+	for _, w := range b {
+		key := w.StartTime.UnixNano()
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			result = append(result, w)
+		}
+	}
+	return result
+}
+
+func meanStdDev(values []float64) (float64, float64) {
 	if len(values) == 0 {
-		return 0
+		return 0, 0
 	}
 	sum := 0.0
 	for _, v := range values {
 		sum += v
 	}
-	return sum / float64(len(values))
+	meanVal := sum / float64(len(values))
+
+	var sumSq float64
+	for _, v := range values {
+		diff := v - meanVal
+		sumSq += diff * diff
+	}
+	return meanVal, math.Sqrt(sumSq / float64(len(values)))
 }
 
-// stdDev вычисляет стандартное отклонение
-func stdDev(values []float64, mean float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	var sumSqDiff float64
-	for _, v := range values {
-		diff := v - mean
-		sumSqDiff += diff * diff
-	}
-	variance := sumSqDiff / float64(len(values))
-	return math.Sqrt(variance)
+func (d *OverloadDetector) SetTLSThresholds(absolute, growth float64) {
+	d.OverloadAbsoluteThreshold = absolute
+	d.OverloadGrowthFactor = growth
+}
+
+func (d *OverloadDetector) ResetTLSState() {
+	d.prevClientHelloCount = 0
+	d.ppsHistory = make([]float64, 0, 30)
+	d.zScoreHistory = make([]float64, 0, 3)
+	d.adaptiveThresholdActive = false
+	d.consecutiveCleanWindows = 0
 }
