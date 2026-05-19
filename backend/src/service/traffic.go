@@ -178,7 +178,6 @@ func NewTrafficService(
 }
 
 // analyzeFile выполняет парсинг и анализ файла, возвращает список моделей Traffic.
-// Общий код для Pipeline и PipelineAnalyzeOnly.
 func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.Traffic, error) {
 	parser := prs.NewParser()
 	packets, err := parser.Parse(filename)
@@ -193,7 +192,6 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	capDur := captureDurationFromPackets(packets)
 
 	// Синхронный анализ окон: DDoS — AnalyzeWindowsWithFlows (агрегация по источнику);
-	// остальные — AnalyzeWindows; привязка потоков по пересечению времени окна с пакетами потока.
 	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
 	portScanDet := detector.NewPortScanDetector()
@@ -245,14 +243,6 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 }
 
 // Pipeline — парсит файл, анализирует, СОХРАНЯЕТ в БД и отправляет в broadcast (для реал-тайм данных)
-// приходит файл
-// парсим файл на PacketInfo
-// Разделяем PacketInfo на FlowInfo
-// Тут можно записать FlowInfo в БД
-// Собираем FlowStats по FlowInfo
-// Пропускаем FlowStats через детекторы и получаем DetectionResult
-// Если DetectionResult.IsAnomaly добавляем DetectionResult.Type.String() в список аномалий
-// Записываем аномалии для каждого FlowInfo в таблицу единым запросом
 func (s *TrafficService) Pipeline(filename string, uploadID uint) ([]models.Traffic, error) {
 	results, err := s.analyzeFile(filename, uploadID)
 	if err != nil {
@@ -272,8 +262,6 @@ func (s *TrafficService) Pipeline(filename string, uploadID uint) ([]models.Traf
 }
 
 // PipelineAnalyzeOnly — парсит файл и анализирует, но НЕ сохраняет в БД.
-// Используется для загрузки файлов: результат возвращается клиенту напрямую,
-// без влияния на основную базу данных.
 func (s *TrafficService) PipelineAnalyzeOnly(filename string, uploadID uint) ([]models.Traffic, error) {
 	return s.analyzeFile(filename, uploadID)
 }
