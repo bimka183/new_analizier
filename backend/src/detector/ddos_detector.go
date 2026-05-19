@@ -556,12 +556,15 @@ func (d *DDoSDetector) sourceAugmentedWindows(windows []packet.TimeWindow, flows
 }
 
 func flowIntersectsWindow(f *packet.FlowInfo, w packet.TimeWindow) bool {
-	for _, p := range f.Packets {
-		if !p.Timestamp.Before(w.StartTime) && p.Timestamp.Before(w.EndTime) {
-			return true
-		}
+	if len(f.Packets) == 0 {
+		return false
 	}
-	return false
+	startTime := f.Packets[0].Timestamp
+	endTime := f.Packets[len(f.Packets)-1].Timestamp
+	if endTime.Before(w.StartTime) || startTime.After(w.EndTime) || startTime.Equal(w.EndTime) {
+		return false
+	}
+	return true
 }
 
 func addFlowsForSource(flows map[string]*packet.FlowInfo, srcIP string, out map[string]struct{}) {

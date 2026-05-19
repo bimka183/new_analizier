@@ -97,13 +97,15 @@ func captureDurationFromPackets(packets []pkt.PacketInfo) time.Duration {
 
 // flowIntersectsTimeWindow — согласовано с detector.flowIntersectsWindow: любой пакет в [Start, End).
 func flowIntersectsTimeWindow(f *pkt.FlowInfo, w pkt.TimeWindow) bool {
-	for _, p := range f.Packets {
-		t := p.Timestamp
-		if !t.Before(w.StartTime) && t.Before(w.EndTime) {
-			return true
-		}
+	if len(f.Packets) == 0 {
+		return false
 	}
-	return false
+	startTime := f.Packets[0].Timestamp
+	endTime := f.Packets[len(f.Packets)-1].Timestamp
+	if endTime.Before(w.StartTime) || startTime.After(w.EndTime) || startTime.Equal(w.EndTime) {
+		return false
+	}
+	return true
 }
 
 // runWindowDetectors вызывает DDoS с потоками и остальные оконные детекторы без смены их API.
@@ -124,6 +126,9 @@ func (s *TrafficService) runWindowDetectors(windows []pkt.TimeWindow, flows map[
 		for _, win := range anomalousWins {
 			for flowID, flow := range flows {
 				if len(flow.Packets) == 0 {
+					continue
+				}
+				if anomalousFlows[flowID] == det.Name() {
 					continue
 				}
 				if flowIntersectsTimeWindow(flow, win) {

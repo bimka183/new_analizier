@@ -11,19 +11,28 @@ import (
 	"github.com/gopacket/gopacket/pcap"
 )
 
-func getInterfaceName(index int) string {
-	iface, err := net.InterfaceByIndex(index)
-	if err != nil {
-		return fmt.Sprintf("unknown (index: %d)", index)
-	}
-	return iface.Name
-}
-
 type Parser struct {
+	ifaceCache map[int]string
 }
 
 func NewParser() *Parser {
-	return &Parser{}
+	return &Parser{
+		ifaceCache: make(map[int]string),
+	}
+}
+
+func (p *Parser) getInterfaceName(index int) string {
+	if name, exists := p.ifaceCache[index]; exists {
+		return name
+	}
+	iface, err := net.InterfaceByIndex(index)
+	if err != nil {
+		name := fmt.Sprintf("unknown (index: %d)", index)
+		p.ifaceCache[index] = name
+		return name
+	}
+	p.ifaceCache[index] = iface.Name
+	return iface.Name
 }
 
 func (p *Parser) getInfo(packet gopacket.Packet) []string {
@@ -92,7 +101,7 @@ func (p *Parser) Parse(filename string) ([]pkt.PacketInfo, error) {
 		packetNum++
 		info := pkt.PacketInfo{
 			PacketNumber:  packetNum,
-			Interface:     getInterfaceName(packet.Metadata().InterfaceIndex),
+			Interface:     p.getInterfaceName(packet.Metadata().InterfaceIndex),
 			Timestamp:     packet.Metadata().Timestamp,
 			Length:        int(packet.Metadata().Length),
 			TrafficVolume: int(packet.Metadata().CaptureInfo.Length),

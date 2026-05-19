@@ -193,6 +193,7 @@ func (a *App) handleUpload(c *gin.Context) {
 	}
 
 	fmt.Printf("Uploading file: %s\n", path)
+	startTime := time.Now()
 
 	// 1. Сначала создаём запись об импорте в БД, чтобы получить ID
 	uploadRecord := models.Upload{
@@ -216,7 +217,7 @@ func (a *App) handleUpload(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Failed to process and save traffic data: " + err.Error()})
 		return
 	}
-	fmt.Printf("File parsed, analyzed and saved. Total results returned: %d\n", len(results))
+	fmt.Printf("File parsed, analyzed and saved in %v. Total results returned: %d\n", time.Since(startTime), len(results))
 
 	totalPackets := 0
 	for _, r := range results {
@@ -228,10 +229,16 @@ func (a *App) handleUpload(c *gin.Context) {
 	uploadRecord.Summary = fmt.Sprintf(`{"packets": %d}`, totalPackets)
 	a.DB.Save(&uploadRecord)
 
+	responseResults := results
+	if len(results) > 10000 {
+		responseResults = results[:10000]
+	}
+
 	c.JSON(200, gin.H{
-		"status": "analyzed",
-		"data":   results,
-		"total":  len(results),
+		"status":  "analyzed",
+		"data":    responseResults,
+		"total":   len(results),
+		"packets": totalPackets,
 	})
 }
 

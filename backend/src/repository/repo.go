@@ -44,7 +44,7 @@ func (r *postgresTrafficRepo) CreateBulk(traffics []*models.Traffic) error {
 	if len(traffics) == 0 {
 		return nil
 	}
-	tx := r.db.CreateInBatches(traffics, 100)
+	tx := r.db.CreateInBatches(traffics, 1000)
 	if tx.Error != nil {
 		return tx.Error
 	}
