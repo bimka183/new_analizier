@@ -13,16 +13,11 @@ import (
 	"time"
 )
 
-// minStatSample — минимальный размер выборки для Mean/StdDev/Z (ТЗ по статистике).
 const minStatSample = 5
-
-// ewmaChangeLogAbsEps — игнорировать дробный шум при логировании приращения EWMA по BPS.
 const ewmaChangeLogAbsEps = 1e-3
-
-// Пороги по report_sourcestats.pdf §3.3 (amplification) и §4 (MAD среди источников).
 const (
 	minAmplificationActors = 10
-	minAmplificationUDP    = 5 // минимум источников с UDP-потоком на порт-усилитель
+	minAmplificationUDP    = 5
 )
 
 var amplificationUDPPorts = map[int]struct{}{
@@ -110,7 +105,6 @@ func (d *DDoSDetector) AnalyzeWindows(windows []packet.TimeWindow) []packet.Time
 }
 
 // AnalyzeWindowsWithFlows анализирует окна и при наличии проанализированных потоков
-// дополняет результат признаками по агрегации источника (SourceStats), см. report_sourcestats §3.3.
 func (d *DDoSDetector) AnalyzeWindowsWithFlows(windows []packet.TimeWindow, flows map[string]*packet.FlowInfo, captureDuration time.Duration) []packet.TimeWindow {
 	base := d.analyzeWindowsFromStats(windows)
 	if flows == nil || captureDuration <= 0 || len(windows) == 0 {
@@ -120,7 +114,6 @@ func (d *DDoSDetector) AnalyzeWindowsWithFlows(windows []packet.TimeWindow, flow
 	return unionTimeWindows(base, extra)
 }
 
-// analyzeWindowsFromStats — прежняя логика только по WindowStats (скользящая история окон).
 func (d *DDoSDetector) analyzeWindowsFromStats(windows []packet.TimeWindow) []packet.TimeWindow {
 	const (
 		bpsThreshold      = 1_000_000

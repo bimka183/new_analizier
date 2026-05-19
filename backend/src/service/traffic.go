@@ -83,6 +83,25 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// flowInvolvesIP — поток связан с IP (любое направление пакетов).
+func flowInvolvesIP(flow *pkt.FlowInfo, ip string) bool {
+	if ip == "" || flow == nil {
+		return false
+	}
+	if flow.SourceIP == ip || flow.DestinationIP == ip {
+		return true
+	}
+	if flow.Stats.SrcIP == ip || flow.Stats.DstIP == ip {
+		return true
+	}
+	for _, p := range flow.Packets {
+		if p.SrcIP == ip || p.DstIP == ip {
+			return true
+		}
+	}
+	return false
+}
+
 // captureDurationFromPackets — длительность захвата для AggregateBySource (первый–последний пакет).
 func captureDurationFromPackets(packets []pkt.PacketInfo) time.Duration {
 	if len(packets) < 2 {
@@ -180,6 +199,9 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	// остальные — AnalyzeWindows; привязка потоков по пересечению времени окна с пакетами потока.
 	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
+	portScanDet := detector.NewPortScanDetector()
+	scanningIPs := portScanDet.ScanningSources(flows, capDur)
+
 	var results []models.Traffic
 
 	for _, flow := range flows {
@@ -204,6 +226,15 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
 					AnomalyType: detRes.Type.String(),
 				})
+			}
+		}
+
+		for scanIP := range scanningIPs {
+			if flowInvolvesIP(flow, scanIP) {
+				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+					AnomalyType: detector.AnomalyScanning.String(),
+				})
+				break
 			}
 		}
 

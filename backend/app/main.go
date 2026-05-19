@@ -49,7 +49,6 @@ func NewApp(db *gorm.DB) *App {
 
 	repo := repository.NewPostgresTrafficRepo(db)
 
-	// Инициализация детекторов
 	_, internalNet, _ := net.ParseCIDR("59.166.0.0/16")
 	detectors := []detector.Detector{
 		&detector.DDoSDetector{},
@@ -117,7 +116,6 @@ func (a *App) corsMiddleware() gin.HandlerFunc {
 	}
 }
 
-// hashPassword — простое хеширование пароля (SHA-256)
 func hashPassword(password string) string {
 	h := sha256.New()
 	h.Write([]byte(password))
@@ -415,7 +413,6 @@ func (a *App) handleGetTrafficByID(c *gin.Context) {
 	c.JSON(http.StatusOK, traffic)
 }
 
-// handleDeleteTraffic — очистка всех данных из БД (только для администратора)
 func (a *App) handleDeleteTraffic(c *gin.Context) {
 	err := a.TrafficRepo.DeleteAllTraffic()
 	if err != nil {
@@ -427,7 +424,6 @@ func (a *App) handleDeleteTraffic(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "all traffic data deleted"})
 }
 
-// handleReset — откат до базовых настроек (только для администратора)
 func (a *App) handleReset(c *gin.Context) {
 	err := a.TrafficRepo.ResetDatabase()
 	if err != nil {
@@ -439,7 +435,6 @@ func (a *App) handleReset(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "database reset to default state"})
 }
 
-// handleLogin — аутентификация пользователя
 func (a *App) handleLogin(c *gin.Context) {
 	var req struct {
 		Username string `json:"username"`
@@ -517,7 +512,6 @@ func (a *App) runBroadcast() {
 	}
 }
 
-// seedDefaultAdmin создаёт администратора по умолчанию, если его нет
 func seedDefaultAdmin(repo repository.TrafficRepository) {
 	_, err := repo.GetUserByUsername("admin")
 	if err != nil {
