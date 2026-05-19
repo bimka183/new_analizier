@@ -20,9 +20,6 @@ const ANOMALY_COLOR_VAR_BY_TYPE = {
   "Network Overload": "--chart-bar-overload",
   "Network/Port Scanning": "--chart-bar-scan",
   "Worm Activity": "--chart-bar-worm",
-  "Point-to-Multipoint": "--chart-bar-p2mp",
-  "Flow Switching": "--chart-bar-flow",
-  "Confirmed Virus Activity": "--chart-bar-virus",
   None: "--chart-bar-none",
 };
 

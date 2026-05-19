@@ -16,12 +16,6 @@ export const getRowClassName = (anomaly) => {
       return "traffic-table__row--scan";
     case "Worm Activity":
       return "traffic-table__row--worm";
-    case "Point-to-Multipoint":
-      return "traffic-table__row--p2mp";
-    case "Flow Switching":
-      return "traffic-table__row--flow";
-    case "Confirmed Virus Activity":
-      return "traffic-table__row--virus";
     case "None":
     case "":
     case null:
@@ -36,3 +30,6 @@ export const getAnomalyBadgeClassName = (anomaly) => {
   const rowClass = getRowClassName(anomaly);
   return rowClass.replace("__row--", "__anomaly--");
 };
+
+export const shouldShowAnomalyPill = (anomaly) =>
+  getRowClassName(anomaly) !== "traffic-table__row--none";

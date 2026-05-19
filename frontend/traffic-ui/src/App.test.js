@@ -5,7 +5,7 @@ import { AuthProvider } from "./context/AuthContext";
 
 test("renders main heading", () => {
   render(
-    <MemoryRouter initialEntries={["/dashboard"]}>
+    <MemoryRouter initialEntries={["/analyze-file"]}>
       <AuthProvider>
         <App />
       </AuthProvider>

@@ -1,6 +1,10 @@
 import React, { useEffect } from "react";
 import Button from "../button";
-import { getAnomaly, getAnomalyBadgeClassName } from "../../utils/traffic";
+import {
+  getAnomaly,
+  getAnomalyBadgeClassName,
+  shouldShowAnomalyPill,
+} from "../../utils/traffic";
 import "./PacketDetailModal.scss";
 
 function PacketDetailModal({ open, packets, onClose }) {
@@ -61,13 +65,15 @@ function PacketDetailModal({ open, packets, onClose }) {
                   <tr key={item.id}>
                     <td>{item.timestamp}</td>
                     <td>
-                      <span
-                        className={`traffic-table__anomaly-pill ${getAnomalyBadgeClassName(
-                          anomaly
-                        )}`}
-                      >
-                        {anomaly}
-                      </span>
+                      {shouldShowAnomalyPill(anomaly) ? (
+                        <span
+                          className={`traffic-table__anomaly-pill ${getAnomalyBadgeClassName(
+                            anomaly
+                          )}`}
+                        >
+                          {anomaly}
+                        </span>
+                      ) : null}
                     </td>
                     <td>{item.source_ip}</td>
                     <td>{item.destination_ip}</td>

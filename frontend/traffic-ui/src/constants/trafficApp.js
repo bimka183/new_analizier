@@ -23,12 +23,14 @@ export const KNOWN_THREAT_TYPES = [
   "Network Overload",
   "Network/Port Scanning",
   "Worm Activity",
-  "Confirmed Virus Activity",
-  "Point-to-Multipoint",
-  "Flow Switching",
 ];
 
 /** Default rows per page (initial state); user can switch via `PAGE_SIZE_OPTIONS`. */
 export const ITEMS_PER_PAGE = 10;
 
 export const PAGE_SIZE_OPTIONS = [5, 10, 15];
+
+/** Set to true to show Dashboard in the sidebar again. Route `/dashboard` stays registered. */
+export const DASHBOARD_NAV_ENABLED = false;
+
+export const DEFAULT_HOME_ROUTE = "/analyze-file";

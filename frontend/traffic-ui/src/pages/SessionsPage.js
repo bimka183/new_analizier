@@ -25,14 +25,27 @@ function SessionsPage({
   onItemsPerPageChange,
   onPrevPage,
   onNextPage,
+  loading = false,
+  fetchError = null,
 }) {
   return (
     <section className="sessions-page">
       <h2>Sessions</h2>
       <p className="sessions-page__lead">
-        Traffic rows grouped by time window (newest first). Filters apply to the
-        same dataset as on the dashboard.
+        Traffic rows grouped by time window (newest first). Filters and
+        pagination are loaded from the server on each change.
       </p>
+
+      {loading ? (
+        <p className="sessions-page__status" role="status">
+          Loading traffic…
+        </p>
+      ) : null}
+      {fetchError ? (
+        <p className="sessions-page__status sessions-page__status--error" role="alert">
+          Failed to load traffic. Check that the backend is running.
+        </p>
+      ) : null}
 
       <div className="app__controls sessions-page__controls">
         <TrafficFilters

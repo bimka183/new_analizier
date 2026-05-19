@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { DEFAULT_HOME_ROUTE } from "../constants/trafficApp";
 import { useAuth } from "../context/AuthContext";
 import Button from "../ui/button";
 import "./LoginPage.scss";
@@ -13,7 +14,7 @@ function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={DEFAULT_HOME_ROUTE} replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -22,7 +23,7 @@ function LoginPage() {
     setSubmitting(true);
     try {
       await login({ username, password });
-      navigate("/dashboard", { replace: true });
+      navigate(DEFAULT_HOME_ROUTE, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {

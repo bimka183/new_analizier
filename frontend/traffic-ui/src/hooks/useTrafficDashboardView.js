@@ -11,7 +11,14 @@ import { groupTrafficRows } from "../utils/groupTrafficRows";
 import { sortTrafficGroups } from "../utils/trafficTableSort";
 
 export function useTrafficDashboardView(allData, options = {}) {
-  const { tableBaseOrder = "chronological" } = options;
+  const {
+    tableBaseOrder = "chronological",
+    serverPagination = false,
+    serverTotalRows = 0,
+    itemsPerPage: itemsPerPageOption = ITEMS_PER_PAGE,
+    currentPage: currentPageOption = 1,
+  } = options;
+
   const [filterSource, setFilterSource] = useState("");
   const [filterDestination, setFilterDestination] = useState("");
   const [filterPort, setFilterPort] = useState("");
@@ -22,6 +29,13 @@ export function useTrafficDashboardView(allData, options = {}) {
     column: null,
     direction: null,
   });
+
+  const paginationItemsPerPage = serverPagination
+    ? itemsPerPageOption
+    : itemsPerPage;
+  const paginationCurrentPage = serverPagination
+    ? currentPageOption
+    : currentPage;
 
   const matchesFilters = useCallback(
     (item) => {
@@ -43,14 +57,17 @@ export function useTrafficDashboardView(allData, options = {}) {
     [filterAnomaly, filterDestination, filterPort, filterSource]
   );
 
-  const filteredChartData = useMemo(
-    () => allData.filter((item) => matchesFilters(item)),
-    [allData, matchesFilters]
-  );
+  const filteredChartData = useMemo(() => {
+    if (serverPagination) {
+      return allData;
+    }
+    return allData.filter((item) => matchesFilters(item));
+  }, [allData, matchesFilters, serverPagination]);
 
   useEffect(() => {
+    if (serverPagination) return;
     setCurrentPage(1);
-  }, [filterAnomaly, filterDestination, filterPort, filterSource, itemsPerPage]);
+  }, [filterAnomaly, filterDestination, filterPort, filterSource, itemsPerPage, serverPagination]);
 
   const trafficTableGroups = useMemo(
     () => groupTrafficRows(filteredChartData),
@@ -75,20 +92,29 @@ export function useTrafficDashboardView(allData, options = {}) {
     );
   }, [baseOrderedTableGroups, tableSort.column, tableSort.direction]);
 
-  const totalPages = Math.ceil(orderedTrafficTableGroups.length / itemsPerPage);
+  const totalPages = serverPagination
+    ? Math.max(1, Math.ceil(serverTotalRows / paginationItemsPerPage))
+    : Math.ceil(orderedTrafficTableGroups.length / paginationItemsPerPage);
 
-  const paginatedTableGroups = useMemo(
-    () =>
-      orderedTrafficTableGroups.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-      ),
-    [currentPage, itemsPerPage, orderedTrafficTableGroups]
-  );
+  const paginatedTableGroups = useMemo(() => {
+    if (serverPagination) {
+      return orderedTrafficTableGroups;
+    }
+    return orderedTrafficTableGroups.slice(
+      (paginationCurrentPage - 1) * paginationItemsPerPage,
+      paginationCurrentPage * paginationItemsPerPage
+    );
+  }, [
+    orderedTrafficTableGroups,
+    paginationCurrentPage,
+    paginationItemsPerPage,
+    serverPagination,
+  ]);
 
   useEffect(() => {
+    if (serverPagination) return;
     setCurrentPage(1);
-  }, [tableSort.column, tableSort.direction]);
+  }, [tableSort.column, tableSort.direction, serverPagination]);
   const paginatedData = paginatedTableGroups;
 
   const trafficByIP = useMemo(

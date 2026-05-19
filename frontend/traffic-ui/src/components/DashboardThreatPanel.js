@@ -5,9 +5,7 @@ import "./UploadSection.scss";
 const THREAT_COLORS = [
   "var(--button-color)",
   "var(--table-row-overload-color)",
-  "var(--table-row-p2mp-color)",
   "var(--table-row-worm-color)",
-  "var(--table-row-virus-color)",
   "var(--main-color)",
 ];
 
