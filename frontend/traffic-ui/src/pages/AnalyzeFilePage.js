@@ -252,7 +252,6 @@ function AnalyzeFilePage() {
           onChooseFile={handleChooseFile}
           onRemoveFile={handleRemoveFile}
           onUpload={handleUpload}
-          isReportAvailable={isReportAvailable}
           isUploadLocked={isUploadLocked}
         />
       </SectionContainer>

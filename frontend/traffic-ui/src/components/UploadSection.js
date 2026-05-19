@@ -63,7 +63,6 @@ function UploadSection({
   onChooseFile,
   onRemoveFile,
   onUpload,
-  isReportAvailable,
   isUploadLocked = false,
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -193,7 +192,6 @@ function UploadSection({
               <span>Duration:</span> {analysisSummary.duration}
             </p>
           </div>
-          <Button disabled={!isReportAvailable}>View Full Report</Button>
         </div>
 
         <div className="upload-panel upload-panel--threats">

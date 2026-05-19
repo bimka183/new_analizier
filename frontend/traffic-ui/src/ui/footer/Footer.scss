@@ -34,7 +34,7 @@
     max-height 0.53s ease,
     opacity 0.33s ease,
     padding 0.4s ease;
-  padding-top: 0;
+  padding: 0;
 }
 
 .site-footer:hover .site-footer__peek,
@@ -52,7 +52,7 @@
   max-height: 820px;
   opacity: 1;
   pointer-events: auto;
-  padding-top: 20px;
+  padding: 20px;
 }
 
 .site-footer__inner {
@@ -492,6 +492,7 @@
   .site-footer:hover .site-footer__panel,
   .site-footer:focus-within .site-footer__panel {
     max-height: 1080px;
+    padding: 12px;
   }
 }
 

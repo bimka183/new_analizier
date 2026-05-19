@@ -41,6 +41,7 @@ function App() {
         processedFiles={processedFilesCount}
         flowsCount={allData.length}
       />
+      <div className="app-shell__main">
       <div className="app-shell__content">
         <div className="app">
           <div className="app__header">
@@ -125,7 +126,8 @@ function App() {
             <Route path="*" element={<Navigate to={DEFAULT_HOME_ROUTE} replace />} />
           </Routes>
         </div>
-        <Footer />
+      </div>
+      <Footer />
       </div>
     </div>
   );

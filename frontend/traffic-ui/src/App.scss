@@ -16,14 +16,20 @@
   color: var(--text-color);
 }
 
-.app-shell__content {
+.app-shell__main {
   margin-left: 200px;
   width: calc(100% - 200px);
   box-sizing: border-box;
-  padding: 20px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+.app-shell__content {
+  flex: 1 0 auto;
+  box-sizing: border-box;
+  padding: 20px;
+  min-width: 0;
 }
 
 .app {
@@ -256,9 +262,12 @@
 }
 
 @media (max-width: $mobile-max) {
-  .app-shell__content {
+  .app-shell__main {
     margin-left: 0;
     width: 100%;
+  }
+
+  .app-shell__content {
     padding: 12px;
   }
 
