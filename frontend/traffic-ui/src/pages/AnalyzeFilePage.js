@@ -228,6 +228,12 @@ function AnalyzeFilePage() {
     ? serverTraffic.setItemsPerPage
     : tableView.setItemsPerPage;
 
+  const isUploadLocked =
+    uploadStatus === "uploading" ||
+    uploadStatus === "processing" ||
+    isServerTableMode ||
+    (isReportAvailable && uploadStatus !== "error");
+
   return (
     <section className="analyze-file-page">
       <h2>Analyze file</h2>
@@ -247,6 +253,7 @@ function AnalyzeFilePage() {
           onRemoveFile={handleRemoveFile}
           onUpload={handleUpload}
           isReportAvailable={isReportAvailable}
+          isUploadLocked={isUploadLocked}
         />
       </SectionContainer>
 

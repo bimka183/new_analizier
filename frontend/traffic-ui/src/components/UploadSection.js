@@ -64,6 +64,7 @@ function UploadSection({
   onRemoveFile,
   onUpload,
   isReportAvailable,
+  isUploadLocked = false,
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
@@ -73,7 +74,11 @@ function UploadSection({
     [threatSummary]
   );
 
+  const isAnalysisBusy =
+    uploadStatus === "uploading" || uploadStatus === "processing";
+
   const handleDrop = (event) => {
+    if (isUploadLocked) return;
     event.preventDefault();
     setIsDragOver(false);
 
@@ -81,32 +86,70 @@ function UploadSection({
     onChooseFile(droppedFile);
   };
 
+  const handleDragOver = (event) => {
+    if (isUploadLocked) return;
+    event.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleChooseFileClick = () => {
+    if (isUploadLocked) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = (event) => {
+    if (isUploadLocked) return;
+    onChooseFile(event.target.files?.[0] || null);
+    event.target.value = "";
+  };
+
   return (
     <section className="upload-section" aria-label="Upload and analysis section">
       <div className="upload-section__row">
-        <div className="upload-panel upload-panel--drop">
+        <div
+          className={`upload-panel upload-panel--drop${
+            isUploadLocked ? " upload-panel--drop--locked" : ""
+          }`}
+        >
           <h3 className="upload-panel__title">Upload File</h3>
           <div
-            className={`upload-dropzone ${isDragOver ? "upload-dropzone--active" : ""}`}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setIsDragOver(true);
-            }}
+            className={`upload-dropzone${
+              isDragOver && !isUploadLocked ? " upload-dropzone--active" : ""
+            }${isUploadLocked ? " upload-dropzone--locked" : ""}`}
+            onDragOver={handleDragOver}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}
+            aria-disabled={isUploadLocked || undefined}
           >
             <UploadIcon />
-            <p>Drag &amp; Drop PCAP file here</p>
-            <span>or choose from your device</span>
+            {isUploadLocked ? (
+              <p className="upload-dropzone__locked-msg">
+                {isAnalysisBusy
+                  ? "Analysis in progress…"
+                  : "Upload is locked while the current analysis is open."}
+              </p>
+            ) : (
+              <>
+                <p>Drag &amp; Drop PCAP file here</p>
+                <span>or choose from your device</span>
+              </>
+            )}
             <input
               ref={fileInputRef}
               type="file"
               accept=".pcap,.pcapng"
-              onChange={(event) => onChooseFile(event.target.files?.[0] || null)}
+              onChange={handleFileInputChange}
               className="upload-dropzone__input"
+              disabled={isUploadLocked}
+              tabIndex={isUploadLocked ? -1 : undefined}
             />
-            <Button onClick={() => fileInputRef.current?.click()}>Choose File</Button>
-            <Button onClick={onUpload} disabled={!file || uploadStatus === "uploading"}>
+            <Button onClick={handleChooseFileClick} disabled={isUploadLocked}>
+              Choose File
+            </Button>
+            <Button
+              onClick={onUpload}
+              disabled={isUploadLocked || !file || isAnalysisBusy}
+            >
               Start Analysis
             </Button>
           </div>
@@ -122,7 +165,8 @@ function UploadSection({
                 type="button"
                 className="upload-file-meta__remove"
                 onClick={onRemoveFile}
-                aria-label="Remove selected file"
+                aria-label="Clear current analysis and upload another file"
+                title="Clear analysis"
               >
                 ×
               </button>
