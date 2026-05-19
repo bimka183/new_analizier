@@ -22,8 +22,6 @@ services:
       dockerfile: backend/app/Dockerfile
     ports:
       - "8080:8080"
-    volumes:
-      - ./files:/app/files
     environment:
       - GIN_MODE=release
       - DB_DSN=host=postgres user=postgres password=postgres dbname=traffic port=5432 sslmode=disable TimeZone=UTC
@@ -39,4 +37,4 @@ services:
       - "3000:3000"
     depends_on:
       backend:
-        condition: service_started # Фронт ждет запуска бэкенда
+        condition: service_started # Фронт ждет запуска бэкенда
