@@ -12,6 +12,7 @@ import SessionsPage from "./pages/SessionsPage";
 import AnalyzeFilePage from "./pages/AnalyzeFilePage";
 import LoginPage from "./pages/LoginPage";
 import SettingsPage from "./pages/SettingsPage";
+import { DEFAULT_HOME_ROUTE } from "./constants/trafficApp";
 import { useTrafficDataset } from "./hooks/useTrafficDataset";
 import { useTrafficDashboardView } from "./hooks/useTrafficDashboardView";
 import "./App.scss";
@@ -157,7 +158,7 @@ function App() {
               element={<SettingsPage onAfterAdminMutation={fetchAllData} />}
             />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to={DEFAULT_HOME_ROUTE} replace />} />
           </Routes>
         </div>
       </div>

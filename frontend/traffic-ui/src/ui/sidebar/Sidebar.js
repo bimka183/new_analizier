@@ -1,5 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
+import { DASHBOARD_NAV_ENABLED } from "../../constants/trafficApp";
 import { useAuth } from "../../context/AuthContext";
 import "./Sidebar.scss";
 
@@ -22,13 +23,23 @@ function Sidebar({ systemStatus, processedFiles, flowsCount }) {
 
       <nav className="sidebar__nav" aria-label="Main navigation">
         <NavLink
-          to="/dashboard"
+          to="/analyze-file"
           className={({ isActive }) =>
             isActive ? "sidebar__link sidebar__link--active" : "sidebar__link"
           }
         >
-          Dashboard
+          Analyze file
         </NavLink>
+        {DASHBOARD_NAV_ENABLED ? (
+          <NavLink
+            to="/dashboard"
+            className={({ isActive }) =>
+              isActive ? "sidebar__link sidebar__link--active" : "sidebar__link"
+            }
+          >
+            Dashboard
+          </NavLink>
+        ) : null}
         <NavLink
           to="/sessions"
           className={({ isActive }) =>
@@ -36,14 +47,6 @@ function Sidebar({ systemStatus, processedFiles, flowsCount }) {
           }
         >
           Sessions
-        </NavLink>
-        <NavLink
-          to="/analyze-file"
-          className={({ isActive }) =>
-            isActive ? "sidebar__link sidebar__link--active" : "sidebar__link"
-          }
-        >
-          Analyze file
         </NavLink>
         <NavLink
           to="/settings"
