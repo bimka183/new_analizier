@@ -1,7 +1,5 @@
 package detector
 
-// D0A4D098D098D0A2D0BED0B2D186D18B20D0BCD0B0D0BAD0B0D0BAD0B8
-
 import (
 	"analizier/backend/src/packet"
 	"fmt"
@@ -93,8 +91,6 @@ func (d *DDoSDetector) Name() string {
 	return "DDoSDetector"
 }
 
-// Analyze требуется интерфейсом Detector, но DDoS-детектор работает на окнах.
-// Для совместимости возвращаем «не аномалия».
 func (d *DDoSDetector) Analyze(stats packet.FlowStats) DetectionResult {
 	return DetectionResult{IsAnomaly: false}
 }
