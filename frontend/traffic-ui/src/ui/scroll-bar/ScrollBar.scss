@@ -1,0 +1,85 @@
+@use "../../styles/vars.scss" as *;
+
+.ui-scroll-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+
+  &__viewport {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--main-color);
+      outline-offset: -2px;
+    }
+  }
+
+  &__content {
+    min-height: min-content;
+  }
+
+  &__track {
+    position: relative;
+    flex: 0 0 8px;
+    width: 8px;
+    margin: 2px 0;
+    border-radius: 999px;
+    background-color: color-mix(
+      in srgb,
+      var(--control-border-color) 55%,
+      transparent
+    );
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+  }
+
+  &__thumb {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border-radius: 999px;
+    background-color: var(--main-color);
+    cursor: grab;
+    touch-action: none;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: color-mix(
+        in srgb,
+        var(--main-color) 85%,
+        var(--text-color)
+      );
+    }
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+}
+
+@media (max-width: $mobile-max) {
+  .ui-scroll-bar {
+    gap: 6px;
+
+    &__track {
+      flex-basis: 6px;
+      width: 6px;
+    }
+  }
+}

@@ -12,10 +12,10 @@ function TrafficTablePlain({ data }) {
           <th>ID</th>
           <th>Flow</th>
           <th>Time</th>
-          <th>Source</th>
           <th>Destination</th>
-          <th>Src Port</th>
+          <th>Source</th>
           <th>Dst Port</th>
+          <th>Src Port</th>
           <th>Flags</th>
           <th>Volume</th>
           <th>Anomaly</th>
@@ -28,10 +28,10 @@ function TrafficTablePlain({ data }) {
             <td>{item.id}</td>
             <td>{item.flow_id}</td>
             <td>{item.timestamp}</td>
-            <td>{item.source_ip}</td>
             <td>{item.destination_ip}</td>
-            <td>{item.source_port}</td>
+            <td>{item.source_ip}</td>
             <td>{item.destination_port}</td>
+            <td>{item.source_port}</td>
             <td>{item.flags}</td>
             <td>{item.traffic_volume}</td>
             <td>{getAnomaly(item)}</td>

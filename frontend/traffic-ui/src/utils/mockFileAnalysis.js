@@ -46,17 +46,38 @@ export function createMockTrafficRowsFromFile(file) {
     const anomalyType = pickAnomaly(baseSeed, index);
     const timestamp = new Date(now - (rowsCount - index) * 15000).toISOString();
 
+    const packets = 5 + (seed % 40);
+    const trafficVolume = 80 + (seed % 3500);
+    const durationSec = 0.5 + (seed % 120) / 10;
+
     return {
       id: `${baseSeed}-${index + 1}`,
+      upload_id: 1,
       flow_id: `flow-${(seed % 18) + 1}`,
+      interface: "eth0",
       timestamp,
       source_ip: buildIP(seed, baseSeed, index),
       destination_ip: buildIP(baseSeed, seed, index + 5),
-      source_port: 1024 + (seed % 50000),
-      destination_port: 20 + (seed % 8000),
+      source_port: String(1024 + (seed % 50000)),
+      destination_port: String(20 + (seed % 8000)),
+      ip_version: "IPv4",
       protocol: seed % 2 === 0 ? "TCP" : "UDP",
+      length: 64 + (seed % 1400),
       flags: seed % 3 === 0 ? "SYN" : "ACK",
-      traffic_volume: 80 + (seed % 3500),
+      traffic_volume: trafficVolume,
+      packets,
+      flow_length: trafficVolume,
+      avg_packet_size: trafficVolume / packets,
+      std_dev_packet_size: 12 + (seed % 80),
+      bps: trafficVolume / durationSec,
+      iat_ms: (durationSec * 1000) / Math.max(packets - 1, 1),
+      duration_sec: durationSec,
+      cnt_syn: seed % 5,
+      cnt_ack: seed % 8,
+      cnt_fin: seed % 3,
+      cnt_psh: seed % 2,
+      cnt_rst: seed % 2,
+      cnt_urg: seed % 1,
       anomalies: anomalyType === "None" ? [] : [{ anomaly_type: anomalyType }],
     };
   });

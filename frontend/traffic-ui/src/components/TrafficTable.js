@@ -10,12 +10,12 @@ import "./TrafficTable.scss";
 const TABLE_COLUMNS = [
   { key: "time", label: "Time" },
   { key: "anomaly", label: "Anomaly" },
-  { key: "source", label: "Source" },
   { key: "destination", label: "Destination" },
+  { key: "source", label: "Source" },
   { key: "protocol", label: "Protocol" },
-  { key: "srcPort", label: "Src Port" },
   { key: "dstPort", label: "Dst Port" },
-  { key: "packets", label: "Packets" },
+  { key: "srcPort", label: "Src Port" },
+  { key: "packets", label: "Group size" },
   { key: "volume", label: "Volume" },
   { key: "flags", label: "Flags" },
 ];
@@ -72,6 +72,13 @@ function SortColumnHeader({
   );
 }
 
+function isSamePacketSet(a, b) {
+  if (!a?.length || !b?.length || a.length !== b.length) return false;
+  const idsA = a.map((p) => p.id).join(",");
+  const idsB = b.map((p) => p.id).join(",");
+  return idsA === idsB;
+}
+
 function TrafficTable({
   groups = [],
   sortColumn = null,
@@ -100,6 +107,10 @@ function TrafficTable({
     ));
   }, [onSortColumn, sortColumn, sortDirection]);
 
+  const openDetails = (packets) => {
+    setModalPackets(packets);
+  };
+
   return (
     <>
       <table className="traffic-table">
@@ -110,30 +121,30 @@ function TrafficTable({
         <tbody>
           {groups.map((group) => {
             const s = getTrafficGroupSummary(group.packets);
-            const rowClass = s.count > 1 ? "traffic-table__row--grouped" : "";
+            const isActive = isSamePacketSet(modalPackets, group.packets);
+            const rowClass = [
+              "traffic-table__row--interactive",
+              s.count > 1 ? "traffic-table__row--grouped" : "",
+              isActive ? "traffic-table__row--active" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
             const anomalyClass = getAnomalyBadgeClassName(s.anomalyLabel);
-            const openDetails = () => {
-              if (s.count > 1) setModalPackets(group.packets);
-            };
 
             return (
               <tr
                 key={group.key}
                 className={rowClass}
-                onClick={openDetails}
+                onClick={() => openDetails(group.packets)}
                 onKeyDown={(e) => {
-                  if (s.count > 1 && (e.key === "Enter" || e.key === " ")) {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    openDetails();
+                    openDetails(group.packets);
                   }
                 }}
-                tabIndex={s.count > 1 ? 0 : undefined}
-                role={s.count > 1 ? "button" : undefined}
-                aria-label={
-                  s.count > 1
-                    ? "Open packet list for this group"
-                    : undefined
-                }
+                tabIndex={0}
+                role="button"
+                aria-label="View flow details"
               >
                 <td>{s.timeLabel}</td>
                 <td>
@@ -145,11 +156,11 @@ function TrafficTable({
                     </span>
                   ) : null}
                 </td>
-                <td>{s.sourceLabel}</td>
                 <td>{s.destinationLabel}</td>
+                <td>{s.sourceLabel}</td>
                 <td>{s.protocolLabel}</td>
-                <td>{s.srcPortLabel}</td>
                 <td>{s.dstPortLabel}</td>
+                <td>{s.srcPortLabel}</td>
                 <td>{s.idLabel}</td>
                 <td>{s.volumeLabel}</td>
                 <td>{s.flagsLabel}</td>

@@ -57,17 +57,27 @@
   }
 }
 
-.traffic-table__row--grouped {
+.traffic-table__row--interactive {
   cursor: pointer;
+  transition: background-color 0.15s ease;
 
   &:hover {
-    filter: brightness(0.97);
+    background-color: color-mix(in srgb, var(--main-color) 8%, transparent);
   }
 
   &:focus-visible {
     outline: 2px solid var(--main-color);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
+}
+
+.traffic-table__row--active {
+  background-color: color-mix(in srgb, var(--main-color) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--main-color);
+}
+
+.traffic-table__row--grouped {
+  // grouped rows share interactive styles
 }
 
 @media (max-width: $mobile-max) {
@@ -78,9 +88,5 @@
 
   .traffic-table__sort-icons {
     font-size: 7px;
-  }
-
-  .traffic-table__row--grouped {
-    cursor: pointer;
   }
 }
