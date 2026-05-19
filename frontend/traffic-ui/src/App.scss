@@ -1,5 +1,15 @@
 @use "./styles/vars.scss" as *;
 
+@mixin anomaly-pill-accent($accent) {
+  --pill-accent: #{$accent};
+  color: var(--pill-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--pill-accent) var(--pill-bg-mix),
+    transparent
+  );
+}
+
 .app-shell {
   min-height: 100vh;
   background-color: var(--background-color);
@@ -196,36 +206,36 @@
     font-size: $font-size-small;
     font-weight: $font-weight-semibold;
     line-height: 1.3;
+    --pill-bg-mix: 20%;
   }
 
   &__anomaly--ddos {
-    background-color: $warning-color;
-    color: var(--button-text-color);
+    @include anomaly-pill-accent(var(--chart-bar-ddos));
   }
 
   &__anomaly--overload {
-    background-color: var(--table-row-overload-color);
-    color: var(--text-color);
+    @include anomaly-pill-accent(var(--chart-bar-overload));
   }
 
   &__anomaly--scan {
-    background-color: $medium-warning-color;
-    color: var(--text-color);
+    @include anomaly-pill-accent(var(--chart-bar-scan));
   }
 
   &__anomaly--worm {
-    background-color: var(--table-row-worm-color);
-    color: var(--button-text-color);
-  }
-
-  &__anomaly--none {
-    background-color: var(--table-row-none-color);
-    color: var(--text-color);
+    @include anomaly-pill-accent(var(--chart-bar-worm));
   }
 
   &__anomaly--default {
-    background-color: var(--table-row-default-color);
-    color: var(--text-color);
+    --pill-bg-mix: 12%;
+    @include anomaly-pill-accent(var(--text-color));
+  }
+}
+
+[data-theme="dark"] .traffic-table__anomaly-pill {
+  --pill-bg-mix: 30%;
+
+  &.traffic-table__anomaly--default {
+    --pill-bg-mix: 18%;
   }
 }
 

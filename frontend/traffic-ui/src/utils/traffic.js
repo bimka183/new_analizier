@@ -30,3 +30,6 @@ export const getAnomalyBadgeClassName = (anomaly) => {
   const rowClass = getRowClassName(anomaly);
   return rowClass.replace("__row--", "__anomaly--");
 };
+
+export const shouldShowAnomalyPill = (anomaly) =>
+  getRowClassName(anomaly) !== "traffic-table__row--none";

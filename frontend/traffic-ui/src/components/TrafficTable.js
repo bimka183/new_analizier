@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from "react";
 import PacketDetailModal from "../ui/packet-detail-modal/PacketDetailModal";
 import { getTrafficGroupSummary } from "../utils/groupTrafficRows";
-import { getAnomalyBadgeClassName } from "../utils/traffic";
+import {
+  getAnomalyBadgeClassName,
+  shouldShowAnomalyPill,
+} from "../utils/traffic";
 import "./TrafficTable.scss";
 
 const TABLE_COLUMNS = [
@@ -134,9 +137,13 @@ function TrafficTable({
               >
                 <td>{s.timeLabel}</td>
                 <td>
-                  <span className={`traffic-table__anomaly-pill ${anomalyClass}`}>
-                    {s.anomalyLabel}
-                  </span>
+                  {shouldShowAnomalyPill(s.anomalyLabel) ? (
+                    <span
+                      className={`traffic-table__anomaly-pill ${anomalyClass}`}
+                    >
+                      {s.anomalyLabel}
+                    </span>
+                  ) : null}
                 </td>
                 <td>{s.sourceLabel}</td>
                 <td>{s.destinationLabel}</td>
