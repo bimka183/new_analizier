@@ -15,9 +15,6 @@ var knownThreatTypes = []string{
 	"Network Overload",
 	"Network/Port Scanning",
 	"Worm Activity",
-	"Confirmed Virus Activity",
-	"Point-to-Multipoint",
-	"Flow Switching",
 }
 
 type UploadFlowSummary struct {

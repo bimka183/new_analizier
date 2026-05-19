@@ -54,15 +54,11 @@ func NewApp(db *gorm.DB) *App {
 		&detector.DDoSDetector{},
 		detector.NewWormDetector(200, 100_000, internalNet),
 		detector.NewAdaptiveOverloadDetector(10, 2.7),
-		detector.NewVirusDetector([]string{}),
 	}
 
 	broadcast := make(chan models.Traffic)
 
-	// FlowDetector'ы (пока пустой список — P2MP / FlowSwitching подключаются здесь)
-	var flowDetectors []detector.FlowDetector
-
-	trafficService := service.NewTrafficService(repo, detectors, flowDetectors, broadcast)
+	trafficService := service.NewTrafficService(repo, detectors, broadcast)
 
 	return &App{
 		Router:    router,

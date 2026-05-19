@@ -160,23 +160,20 @@ func (s *TrafficService) runWindowDetectors(windows []pkt.TimeWindow, flows map[
 }
 
 type TrafficService struct {
-	detectors     []detector.Detector
-	flowDetectors []detector.FlowDetector
-	repo          repository.TrafficRepository
-	broadcast     chan models.Traffic
+	detectors []detector.Detector
+	repo      repository.TrafficRepository
+	broadcast chan models.Traffic
 }
 
 func NewTrafficService(
 	repo repository.TrafficRepository,
 	detectors []detector.Detector,
-	flowDetectors []detector.FlowDetector,
 	broadcast chan models.Traffic,
 ) *TrafficService {
 	return &TrafficService{
-		repo:          repo,
-		detectors:     detectors,
-		flowDetectors: flowDetectors,
-		broadcast:     broadcast,
+		repo:      repo,
+		detectors: detectors,
+		broadcast: broadcast,
 	}
 }
 
@@ -209,19 +206,9 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 		trafficModel := MapFlowToTraffic(flow)
 		trafficModel.UploadID = uploadID
 
-		// Per-flow детекторы (Worm, Virus)
+		// Per-flow детектор (Worm)
 		for _, d := range s.detectors {
 			detRes := d.Analyze(flow.Stats)
-			if detRes.IsAnomaly {
-				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
-					AnomalyType: detRes.Type.String(),
-				})
-			}
-		}
-
-		// FlowDetector'ы (P2MP, FlowSwitching и т.д.)
-		for _, fd := range s.flowDetectors {
-			detRes := fd.AnalyzeFlow(flow)
 			if detRes.IsAnomaly {
 				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
 					AnomalyType: detRes.Type.String(),
