@@ -8,6 +8,7 @@ import TotalFlowsCard from "./ui/total-flows-card";
 import SectionContainer from "./ui/section-container";
 import ThemeToggle from "./ui/theme-toggle/ThemeToggle";
 import Sidebar from "./ui/sidebar/Sidebar";
+import Footer from "./ui/footer";
 import AnalyzedFilesPage from "./pages/AnalyzedFilesPage";
 import AnalyzeFilePage from "./pages/AnalyzeFilePage";
 import LoginPage from "./pages/LoginPage";
@@ -124,6 +125,7 @@ function App() {
             <Route path="*" element={<Navigate to={DEFAULT_HOME_ROUTE} replace />} />
           </Routes>
         </div>
+        <Footer />
       </div>
     </div>
   );

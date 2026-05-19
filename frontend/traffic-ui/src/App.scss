@@ -22,10 +22,14 @@
   box-sizing: border-box;
   padding: 20px;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
-  
+
 .app {
-  min-height: 100vh;
+  flex: 1 0 auto;
+  min-width: 0;
+  padding-bottom: 24px;
 
   input,
   select {
