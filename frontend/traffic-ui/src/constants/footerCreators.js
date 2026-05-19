@@ -12,13 +12,28 @@ export const FOOTER_CREATORS = [
     telegram: "babaka183",
     devopsPoop: true,
   },
-  { id: "creator-backend-1", role: "Backend", telegram: "pipinstallsympy" },
+  {
+    id: "creator-backend-1",
+    role: "Backend",
+    telegram: "pipinstallsympy",
+    backendTrain: true,
+  },
   {
     id: "creator-backend-2",
     role: "Backend 2",
     telegram: "bord228",
     sakura: true,
   },
-  { id: "creator-research-1", role: "Исследователь 1", telegram: "kazak1luha" },
-  { id: "creator-research-2", role: "Исследователь 2", telegram: "Needotroga" },
+  {
+    id: "creator-research-1",
+    role: "Исследователь 1",
+    telegram: "kazak1luha",
+    researchBooks: true,
+  },
+  {
+    id: "creator-research-2",
+    role: "Исследователь 2",
+    telegram: "Needotroga",
+    researchMagnifier: true,
+  },
 ];

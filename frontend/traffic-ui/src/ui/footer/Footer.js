@@ -9,6 +9,24 @@ const SAKURA_LEAF_STYLE = {
   backgroundImage: `url(${SAKURA_LEAF_SRC})`,
 };
 const POOP_ICON_SRC = `${process.env.PUBLIC_URL}/svg/poop.svg`;
+const MAGNIFIER_ICON_SRC = `${process.env.PUBLIC_URL}/svg/icons8-лупа.svg`;
+const RESEARCH_MAGNIFIER_STYLE = {
+  backgroundImage: `url(${MAGNIFIER_ICON_SRC})`,
+};
+const DOCKER_TRAIN_ICON_SRC = `${process.env.PUBLIC_URL}/svg/docker-svgrepo-com.svg`;
+const BACKEND_TRAIN_CAR_STYLE = {
+  backgroundImage: `url(${DOCKER_TRAIN_ICON_SRC})`,
+};
+const BACKEND_TRAIN_CAR_COUNT = 3;
+const RESEARCH_BOOK_SRC = `${process.env.PUBLIC_URL}/svg/books.svg`;
+const RESEARCH_XP_ORB_SRC = `${process.env.PUBLIC_URL}/png/Experience_Orb_Value_-32768-2.png`;
+const RESEARCH_BOOK_STYLE = {
+  backgroundImage: `url(${RESEARCH_BOOK_SRC})`,
+};
+const RESEARCH_XP_ORB_STYLE = {
+  backgroundImage: `url(${RESEARCH_XP_ORB_SRC})`,
+};
+const RESEARCH_XP_ORB_COUNT = 3;
 const POOP_PIECE_STYLE = {
   backgroundImage: `url(${POOP_ICON_SRC})`,
 };
@@ -33,6 +51,15 @@ function getCreatorClassName(person) {
   }
   if (person.devopsPoop) {
     classes.push("site-footer__creator--devops-poop");
+  }
+  if (person.researchMagnifier) {
+    classes.push("site-footer__creator--research");
+  }
+  if (person.backendTrain) {
+    classes.push("site-footer__creator--backend-train");
+  }
+  if (person.researchBooks) {
+    classes.push("site-footer__creator--research-books");
   }
   return classes.join(" ");
 }
@@ -78,6 +105,44 @@ function Footer() {
                           style={SAKURA_LEAF_STYLE}
                         />
                       ))}
+                    </span>
+                  ) : null}
+                  {person.backendTrain ? (
+                    <span className="site-footer__backend-train-scene" aria-hidden="true">
+                      <span className="site-footer__backend-train">
+                        {Array.from({ length: BACKEND_TRAIN_CAR_COUNT }, (_, index) => (
+                          <span
+                            key={`train-${person.id}-${index}`}
+                            className="site-footer__backend-train-car"
+                            style={BACKEND_TRAIN_CAR_STYLE}
+                          />
+                        ))}
+                      </span>
+                    </span>
+                  ) : null}
+                  {person.researchBooks ? (
+                    <span className="site-footer__research-books-scene" aria-hidden="true">
+                      <span className="site-footer__research-books-stack">
+                        <span
+                          className="site-footer__research-book"
+                          style={RESEARCH_BOOK_STYLE}
+                        />
+                      </span>
+                      {Array.from({ length: RESEARCH_XP_ORB_COUNT }, (_, index) => (
+                        <span
+                          key={`orb-${person.id}-${index}`}
+                          className={`site-footer__research-xp-orb site-footer__research-xp-orb--${index + 1}`}
+                          style={RESEARCH_XP_ORB_STYLE}
+                        />
+                      ))}
+                    </span>
+                  ) : null}
+                  {person.researchMagnifier ? (
+                    <span className="site-footer__research-scene" aria-hidden="true">
+                      <span
+                        className="site-footer__research-magnifier"
+                        style={RESEARCH_MAGNIFIER_STYLE}
+                      />
                     </span>
                   ) : null}
                   {person.devopsPoop ? (
