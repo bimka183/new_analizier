@@ -185,6 +185,7 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	for _, flow := range flows {
 
 		trafficModel := MapFlowToTraffic(flow)
+		trafficModel.UploadID = uploadID
 
 		// Per-flow детекторы (Worm, Virus)
 		for _, d := range s.detectors {
