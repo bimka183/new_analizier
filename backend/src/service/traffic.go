@@ -132,8 +132,13 @@ func (s *TrafficService) runWindowDetectors(windows []pkt.TimeWindow, flows map[
 	anomalousFlows := make(map[string]string)
 	for _, det := range s.detectors {
 		var anomalousWins []pkt.TimeWindow
+
 		switch t := det.(type) {
 		case *detector.DDoSDetector:
+			anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
+		case *detector.OverloadDetector:
+			anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
+		case *detector.WormDetector:
 			anomalousWins = t.AnalyzeWindowsWithFlows(windows, flows, capDur)
 		default:
 			if w, ok := det.(interface {
@@ -142,6 +147,7 @@ func (s *TrafficService) runWindowDetectors(windows []pkt.TimeWindow, flows map[
 				anomalousWins = w.AnalyzeWindows(windows)
 			}
 		}
+
 		for _, win := range anomalousWins {
 			for flowID, flow := range flows {
 				if len(flow.Packets) == 0 {
@@ -186,6 +192,12 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	}
 	flows := divideByFlow(packets)
 
+	// ========== ВАЖНО: ОБНОВЛЯЕМ СТАТИСТИКУ ПОТОКОВ ==========
+	for _, flow := range flows {
+		pkt.AnalyzeFlow(flow)
+	}
+	// ========================================================
+
 	// Разбиваем на временные окна для DDoS и Overload детекторов
 	windows := pkt.SplitIntoWindows(packets, 10*time.Second)
 
@@ -194,13 +206,13 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 	// Синхронный анализ окон: DDoS — AnalyzeWindowsWithFlows (агрегация по источнику);
 	anomalousFlows := s.runWindowDetectors(windows, flows, capDur)
 
+	// НОВЫЙ КОД: PortScan детектор
 	portScanDet := detector.NewPortScanDetector()
 	scanningIPs := portScanDet.ScanningSources(flows, capDur)
 
 	var results []models.Traffic
 
 	for _, flow := range flows {
-
 		trafficModel := MapFlowToTraffic(flow)
 		trafficModel.UploadID = uploadID
 
@@ -223,15 +235,20 @@ func (s *TrafficService) analyzeFile(filename string, uploadID uint) ([]models.T
 			}
 		}
 
-		// DDoS/Overload аномалии из анализа окон
+		// DDoS/Overload/Worm аномалии из анализа окон
 		if detName, ok := anomalousFlows[flow.FlowID]; ok {
-			if detName == "DDoSDetector" {
+			switch detName {
+			case "DDoSDetector":
 				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
 					AnomalyType: detector.AnomalyDoS.String(),
 				})
-			} else if detName == "OverloadDetector" {
+			case "OverloadDetector":
 				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
 					AnomalyType: detector.AnomalyOverload.String(),
+				})
+			case "WormDetector":
+				trafficModel.Anomalies = append(trafficModel.Anomalies, models.Anomaly{
+					AnomalyType: detector.AnomalyWorm.String(),
 				})
 			}
 		}

@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+type TLSInfo struct {
+	JA3 string // отпечаток клиента TLS
+	SNI string // имя сервера из ClientHello
+}
+
 type FlowInfo struct {
 	FlowID        string
 	Interface     string
@@ -41,6 +46,7 @@ type FlowStats struct {
 	DstIP            string
 	SrcPort          string
 	DstPort          string
+	TLS              *TLSInfo
 }
 
 func CalculateStdDev(lengths []int) float64 {
@@ -112,15 +118,21 @@ func CalculateFlags(flow *FlowStats, flags []string) {
 }
 
 func AnalyzeFlow(flow *FlowInfo) {
+	existingTLS := flow.Stats.TLS
 	stat := FlowStats{}
-	var lengths []int
+	var lengths []int	
 	for _, packet := range flow.Packets {
 		stat.FlowLength += packet.Length
 		lengths = append(lengths, packet.Length)
 		CalculateFlags(&stat, packet.Flags)
+		if packet.TLS != nil && stat.TLS == nil {
+			stat.TLS = packet.TLS
+		}
 	}
 	stat.CntPackets = len(flow.Packets)
-	stat.AvgPacketSize = float64(stat.FlowLength) / float64(stat.CntPackets)
+	if stat.CntPackets > 0 {
+		stat.AvgPacketSize = float64(stat.FlowLength) / float64(stat.CntPackets)
+	}
 	stat.StdDevPacketSize = CalculateStdDev(lengths)
 	stat.Duration = CalculateDuration(flow)
 	stat.BPS = CalculateBPS(stat.Duration, stat.FlowLength)
@@ -130,5 +142,11 @@ func AnalyzeFlow(flow *FlowInfo) {
 	stat.DstIP = flow.DestinationIP
 	stat.SrcPort = flow.SourcePort
 	stat.DstPort = flow.DestPort
+	
+	// Восстанавливаем TLS если был
+	if stat.TLS == nil {
+		stat.TLS = existingTLS
+	}
+	
 	flow.Stats = stat
 }

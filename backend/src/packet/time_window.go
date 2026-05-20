@@ -9,6 +9,10 @@ type TimeWindow struct {
 	StartTime time.Time
 	EndTime   time.Time
 	Stats     WindowStats
+	
+	// Для OverloadDetector
+	ClientHelloCount     float64
+	ClientHelloCountPrev float64
 }
 
 type WindowStats struct {
@@ -30,6 +34,9 @@ type WindowStats struct {
 	CntPSH int
 	CntURG int
 
+	// TLS статистика
+	TLSFlowCount int
+
 	srcIPSet   map[string]struct{}
 	dstIPSet   map[string]struct{}
 	srcPortSet map[string]struct{}
@@ -48,6 +55,8 @@ func NewTimeWindow(start, end time.Time) TimeWindow {
 			dstPortSet: make(map[string]struct{}),
 			flowSet:    make(map[string]struct{}),
 		},
+		ClientHelloCount:     0,
+		ClientHelloCountPrev: 0,
 	}
 }
 
@@ -85,6 +94,12 @@ func (w *TimeWindow) AddPacket(p PacketInfo) {
 		case "URG":
 			w.Stats.CntURG++
 		}
+	}
+	
+	// Подсчет TLS потоков
+	if p.TLS != nil {
+		w.Stats.TLSFlowCount++
+		w.ClientHelloCount = float64(w.Stats.TLSFlowCount)
 	}
 }
 
@@ -131,6 +146,10 @@ func SplitIntoWindows(packets []PacketInfo, interval time.Duration) []TimeWindow
 
 	currentWindow.Finalize(interval)
 	windows = append(windows, currentWindow)
+	
+	for i := 1; i < len(windows); i++ {
+		windows[i].ClientHelloCountPrev = windows[i-1].ClientHelloCount
+	}
 
 	return windows
 }
